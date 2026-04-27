@@ -129,9 +129,20 @@ def delete_account(usuario):
     """Eliminar una cuenta"""
     try:
         global accounts_db
+        original_length = len(accounts_db)
         accounts_db = [acc for acc in accounts_db if acc.get('usuario') != usuario]
-        return jsonify({"success": True, "message": f"Cuenta {usuario} eliminada"})
+        
+        if len(accounts_db) == original_length:
+            return jsonify({"success": False, "error": "Cuenta no encontrada"}), 404
+        
+        logger.info(f"Deleted account: {usuario}")
+        return jsonify({
+            "success": True, 
+            "message": f"✅ Cuenta @{usuario} eliminada",
+            "accounts": accounts_db
+        })
     except Exception as e:
+        logger.error(f"Error deleting account: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/account/<usuario>', methods=['PUT'])
@@ -271,27 +282,69 @@ def login_cookie():
 @app.route('/api/fetch-followers', methods=['POST'])
 @login_required
 def fetch_followers():
+    """Obtener datos de seguidores (simulado)"""
     try:
         data = request.get_json()
-        usuario = data.get('usuario', 'unknown')
-        return jsonify({
-            "success": True,
-            "usuario": usuario,
-            "followers": 1000,
-            "following": 500,
-            "posts": 150,
-            "engagement": 5.2
-        })
+        usuario = data.get('usuario', '')
+        
+        if not usuario:
+            return jsonify({"success": False, "error": "Usuario no especificado"}), 400
+        
+        # Buscar la cuenta
+        for account in accounts_db:
+            if account.get('usuario') == usuario:
+                # Retornar datos actualizados (simulados)
+                return jsonify({
+                    "success": True,
+                    "usuario": usuario,
+                    "data": {
+                        "seguidores": account.get('seguidores', 0),
+                        "posts_week": account.get('posts_week', 0),
+                        "total_views_week": account.get('total_views_week', 0),
+                        "engagementRate": account.get('engagementRate', 0.0)
+                    }
+                })
+        
+        return jsonify({"success": False, "error": "Cuenta no encontrada"}), 404
     except Exception as e:
+        logger.error(f"Error fetching followers: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/update-followers', methods=['POST'])
 @login_required
 def update_followers():
+    """Actualizar datos de seguidores"""
     try:
         data = request.get_json()
-        return jsonify({"success": True, "updated": True})
+        usuario = data.get('usuario', '')
+        seguidores = data.get('seguidores', 0)
+        engagement_rate = data.get('engagementRate', 0)
+        
+        if not usuario:
+            return jsonify({"success": False, "error": "Usuario no especificado"}), 400
+        
+        # Buscar y actualizar la cuenta
+        actualizado = False
+        for account in accounts_db:
+            if account.get('usuario') == usuario:
+                # Actualizar SOLO los campos especificados
+                account['seguidores'] = int(seguidores)
+                account['engagementRate'] = float(engagement_rate)
+                account['lastUpdate'] = str(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'))
+                actualizado = True
+                logger.info(f"Updated account {usuario}: followers={seguidores}, engagement={engagement_rate}")
+                break
+        
+        if not actualizado:
+            return jsonify({"success": False, "error": "Cuenta no encontrada"}), 404
+        
+        return jsonify({
+            "success": True,
+            "message": f"✅ @{usuario} actualizado correctamente",
+            "account": [acc for acc in accounts_db if acc.get('usuario') == usuario][0]
+        })
     except Exception as e:
+        logger.error(f"Error updating followers: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/account/<usuario>', methods=['GET'])
@@ -313,11 +366,18 @@ def get_account(usuario):
 @app.route('/api/clear-all', methods=['POST'])
 @login_required
 def clear_all():
+    """Limpiar todas las cuentas"""
     try:
         global accounts_db
         accounts_db.clear()
-        return jsonify({"success": True, "message": "Datos borrados"})
+        logger.info("All accounts cleared")
+        return jsonify({
+            "success": True, 
+            "message": "✅ Todas las cuentas han sido eliminadas",
+            "accounts": []
+        })
     except Exception as e:
+        logger.error(f"Error clearing accounts: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/export-csv', methods=['GET'])
