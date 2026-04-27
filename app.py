@@ -1,4 +1,5 @@
 import os
+import logging
 from flask import Flask, request, jsonify, redirect, url_for, render_template_string, send_from_directory
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,7 +7,12 @@ from flask_talisman import Talisman
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__, static_folder='.', static_url_path='')
+logger.info("Flask app creada correctamente")
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'clave-secreta-12345')
@@ -19,8 +25,8 @@ csp = {
 }
 Talisman(app, content_security_policy=csp, force_https=False)
 limiter = Limiter(
-    app=app,
     key_func=get_remote_address,
+    app=app,
     storage_uri="memory://"
 )
 
@@ -54,6 +60,11 @@ button{width:100%;padding:10px;background:#a855f7;color:white;border:none;cursor
 <input name="username" placeholder="Usuario"><input type="password" name="password" placeholder="Clave">
 <button type="submit">Entrar</button></form></div></body></html>
 '''
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint para Render"""
+    return jsonify({"status": "ok"}), 200
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -141,6 +152,68 @@ def import_csv():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+# --- ENDPOINTS DE INSTAGRAM (PLACEHOLDER) ---
+
+@app.route('/api/login-cookie', methods=['POST'])
+@login_required
+def login_cookie():
+    try:
+        data = request.get_json()
+        return jsonify({"success": True, "message": "Cookies cargadas"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/fetch-followers', methods=['POST'])
+@login_required
+def fetch_followers():
+    try:
+        data = request.get_json()
+        usuario = data.get('usuario', 'unknown')
+        return jsonify({
+            "success": True,
+            "usuario": usuario,
+            "followers": 1000,
+            "following": 500,
+            "posts": 150,
+            "engagement": 5.2
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/update-followers', methods=['POST'])
+@login_required
+def update_followers():
+    try:
+        data = request.get_json()
+        return jsonify({"success": True, "updated": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/account/<usuario>', methods=['GET'])
+@login_required
+def get_account(usuario):
+    try:
+        return jsonify({
+            "success": True,
+            "usuario": usuario,
+            "followers": 1000,
+            "following": 500,
+            "posts": 150,
+            "bio": "Sample bio",
+            "website": "https://example.com"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/clear-all', methods=['POST'])
+@login_required
+def clear_all():
+    try:
+        return jsonify({"success": True, "message": "Datos borrados"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 7860))
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"🚀 Iniciando servidor en puerto {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
