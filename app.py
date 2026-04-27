@@ -102,11 +102,52 @@ def hosting_page():
 @app.route('/api/accounts', methods=['GET'])
 @login_required
 def get_accounts():
+    # Asegurar que todas las cuentas tengan todos los campos
+    for account in accounts_db:
+        if 'seguidores' not in account:
+            account['seguidores'] = 0
+        if 'posts_week' not in account:
+            account['posts_week'] = 0
+        if 'total_views_week' not in account:
+            account['total_views_week'] = 0
+        if 'engagementRate' not in account:
+            account['engagementRate'] = 0.0
+        if 'lastUpdate' not in account:
+            account['lastUpdate'] = 'N/A'
+        if 'status' not in account:
+            account['status'] = 'Pending'
+    
     return jsonify({
         "success": True, 
         "accounts": accounts_db,
         "total": len(accounts_db)
     })
+
+@app.route('/api/account/<usuario>', methods=['DELETE'])
+@login_required
+def delete_account(usuario):
+    """Eliminar una cuenta"""
+    try:
+        global accounts_db
+        accounts_db = [acc for acc in accounts_db if acc.get('usuario') != usuario]
+        return jsonify({"success": True, "message": f"Cuenta {usuario} eliminada"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/account/<usuario>', methods=['PUT'])
+@login_required
+def update_account(usuario):
+    """Actualizar una cuenta"""
+    try:
+        data = request.get_json()
+        for account in accounts_db:
+            if account.get('usuario') == usuario:
+                account.update(data)
+                account['lastUpdate'] = str(datetime.datetime.now().strftime('%Y-%m-%d %H:%M'))
+                return jsonify({"success": True, "account": account})
+        return jsonify({"success": False, "error": "Cuenta no encontrada"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/history', methods=['GET'])
 @login_required
@@ -177,22 +218,43 @@ def import_csv():
                     encargada = partes[1] if len(partes) > 1 else "N/A"
                     url = partes[2] if len(partes) > 2 else ""
                     
-                    # Guardar en la lista (en producción sería en BD)
-                    accounts_db.append({
+                    # Crear cuenta con todos los campos que la tabla necesita
+                    account = {
                         "usuario": usuario,
                         "encargada": encargada,
                         "url": url,
+                        "seguidores": 0,
+                        "posts_week": 0,
+                        "total_views_week": 0,
+                        "engagementRate": 0.0,
+                        "lastUpdate": str(datetime.datetime.now().strftime('%Y-%m-%d %H:%M')),
+                        "status": "Pending",
                         "followers": 0,
                         "fecha_importacion": str(datetime.datetime.now())
-                    })
+                    }
+                    
+                    # Verificar si ya existe
+                    existe = False
+                    for acc in accounts_db:
+                        if acc.get('usuario') == usuario:
+                            # Actualizar existente
+                            acc.update(account)
+                            existe = True
+                            break
+                    
+                    if not existe:
+                        accounts_db.append(account)
+                    
                     importados += 1
         
         return jsonify({
             "success": True, 
             "message": f"✅ Se importaron {importados} cuenta(s) correctamente",
-            "importados": importados
+            "importados": importados,
+            "accounts": accounts_db
         })
     except Exception as e:
+        logger.error(f"Error importing CSV: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 # --- ENDPOINTS DE INSTAGRAM (PLACEHOLDER) ---
