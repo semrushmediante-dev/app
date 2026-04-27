@@ -1,6 +1,5 @@
 import os
-import json
-from flask import Flask, request, jsonify, redirect, url_for, render_template_string, send_from_directory
+from flask import Flask, request, jsonify, redirect, url_for, render_template_string
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_talisman import Talisman
@@ -10,7 +9,7 @@ from flask_limiter.util import get_remote_address
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'clave-secreta-muy-larga-12345')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'clave-secreta-12345')
 
 csp = {
     'default-src': "'self'",
@@ -21,14 +20,13 @@ csp = {
 Talisman(app, content_security_policy=csp, force_https=False)
 limiter = Limiter(get_remote_address, app=app, storage_uri="memory://")
 
-# --- LOGIN SYSTEM ---
+# --- LOGIN ---
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 users = {"admin": {"password": generate_password_hash("empresa2024")}}
-accounts_db = []
-history_db = []
+accounts_db = [] # Base de datos temporal
 
 class User(UserMixin):
     def __init__(self, id): self.id = id
@@ -41,13 +39,13 @@ def load_user(user_id):
 LOGIN_HTML = '''
 <!DOCTYPE html>
 <html><head><title>Login</title><style>
-body { background: #0a0a0f; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
-.card { background: #13131a; padding: 40px; border-radius: 15px; border: 1px solid #1e1e2e; text-align: center; }
-input { width: 100%; padding: 10px; margin: 10px 0; background: #000; border: 1px solid #1e1e2e; color: white; }
-button { width: 100%; padding: 10px; background: #a855f7; border: none; color: white; cursor: pointer; }
+body{background:#0a0a0f;color:white;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;}
+.card{background:#13131a;padding:30px;border-radius:15px;border:1px solid #1e1e2e;}
+input{width:100%;padding:10px;margin:10px 0;background:#000;border:1px solid #333;color:white;}
+button{width:100%;padding:10px;background:#a855f7;color:white;border:none;cursor:pointer;}
 </style></head><body>
-<div class="card"><h2>🔒 Acceso</h2><form method="post">
-<input name="username" placeholder="Usuario"><input type="password" name="password" placeholder="Contraseña">
+<div class="card"><h2>Acceso Privado</h2><form method="post">
+<input name="username" placeholder="Usuario"><input type="password" name="password" placeholder="Clave">
 <button type="submit">Entrar</button></form></div></body></html>
 '''
 
@@ -72,7 +70,8 @@ def instagram_page(): return app.send_static_file('indexInstagram.html')
 @login_required
 def hosting_page(): return app.send_static_file('indexHosting.html')
 
-# --- APIS QUE FALTABAN (SOLUCIONA EL ERROR JSON) ---
+# --- RUTAS DE API (ESTO ES LO QUE SOLUCIONA EL ERROR) ---
+
 @app.route('/api/accounts')
 @login_required
 def get_accounts():
@@ -81,19 +80,17 @@ def get_accounts():
 @app.route('/api/history')
 @login_required
 def get_history():
-    return jsonify({"success": True, "history": history_db})
-
-@app.route('/api/import-csv', methods=['POST'])
-@login_required
-def import_csv():
-    data = request.json.get('csvData', '')
-    # Lógica de parseo simple
-    return jsonify({"success": True, "message": "Importado"})
+    return jsonify({"success": True, "history": []})
 
 @app.route('/api/monitor-hosting', methods=['POST'])
 @login_required
 def monitor_hosting():
     return jsonify({"success": True, "results": []})
+
+@app.route('/api/import-csv', methods=['POST'])
+@login_required
+def import_csv():
+    return jsonify({"success": True, "message": "Recibido"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=7860)

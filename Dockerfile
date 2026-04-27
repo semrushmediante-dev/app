@@ -6,7 +6,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ESTO ES LO QUE FALTABA: Instala los navegadores dentro del contenedor
+# ESTA LÍNEA ES VITAL:
 RUN playwright install --with-deps chromium
 
 COPY --chown=appuser:appuser . .
