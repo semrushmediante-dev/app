@@ -9,6 +9,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ... después de pip install ...
+RUN playwright install --with-deps chromium
+
 # 4. Copiar archivos y dar permisos al usuario
 COPY --chown=appuser:appuser . .
 

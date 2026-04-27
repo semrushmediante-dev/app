@@ -74,6 +74,17 @@ LOGIN_HTML = '''
 
 # --- RUTAS ---
 
+@app.route('/api/accounts')
+@login_required
+def get_accounts():
+    # Aquí deberías retornar tu lista de cuentas real
+    return jsonify({"accounts": [], "success": True})
+
+@app.route('/api/history')
+@login_required
+def get_history():
+    return jsonify({"history": [], "success": True})
+
 @app.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def login():
