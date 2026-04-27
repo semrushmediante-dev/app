@@ -1,5 +1,6 @@
 import os
 import logging
+import datetime
 from flask import Flask, request, jsonify, redirect, url_for, render_template_string, send_from_directory
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -101,7 +102,11 @@ def hosting_page():
 @app.route('/api/accounts', methods=['GET'])
 @login_required
 def get_accounts():
-    return jsonify({"success": True, "accounts": accounts_db})
+    return jsonify({
+        "success": True, 
+        "accounts": accounts_db,
+        "total": len(accounts_db)
+    })
 
 @app.route('/api/history', methods=['GET'])
 @login_required
@@ -147,8 +152,46 @@ def monitor_hosting():
 @login_required
 def import_csv():
     try:
-        # Procesar el CSV si se envía
-        return jsonify({"success": True, "message": "Recibido"})
+        data = request.get_json()
+        csv_data = data.get('csvData', '')
+        
+        if not csv_data:
+            return jsonify({"success": False, "error": "No hay datos CSV"}), 400
+        
+        # Procesar las líneas del CSV
+        lineas = csv_data.strip().split('\n')
+        
+        # Saltar header si existe
+        if len(lineas) > 0 and ('Usuario' in lineas[0] or 'usuario' in lineas[0]):
+            lineas = lineas[1:]
+        
+        # Procesar cada línea
+        importados = 0
+        for linea in lineas:
+            if linea.strip():
+                # Separar por coma
+                partes = [p.strip() for p in linea.split(',')]
+                
+                if len(partes) >= 1:
+                    usuario = partes[0].strip('"\'')
+                    encargada = partes[1] if len(partes) > 1 else "N/A"
+                    url = partes[2] if len(partes) > 2 else ""
+                    
+                    # Guardar en la lista (en producción sería en BD)
+                    accounts_db.append({
+                        "usuario": usuario,
+                        "encargada": encargada,
+                        "url": url,
+                        "followers": 0,
+                        "fecha_importacion": str(datetime.datetime.now())
+                    })
+                    importados += 1
+        
+        return jsonify({
+            "success": True, 
+            "message": f"✅ Se importaron {importados} cuenta(s) correctamente",
+            "importados": importados
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -209,7 +252,28 @@ def get_account(usuario):
 @login_required
 def clear_all():
     try:
+        global accounts_db
+        accounts_db.clear()
         return jsonify({"success": True, "message": "Datos borrados"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/export-csv', methods=['GET'])
+@login_required
+def export_csv():
+    """Exportar cuentas como CSV"""
+    try:
+        # Crear CSV en memoria
+        csv_content = "Usuario,Encargada,URL,Followers,Fecha\n"
+        for account in accounts_db:
+            csv_content += f"{account.get('usuario')},{account.get('encargada')},{account.get('url')},{account.get('followers', 0)},{account.get('fecha_importacion', 'N/A')}\n"
+        
+        # Retornar como JSON para que JavaScript lo descargue
+        return jsonify({
+            "success": True,
+            "csv": csv_content,
+            "filename": "cuentas_instagram.csv"
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
