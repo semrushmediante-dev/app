@@ -1,17 +1,17 @@
-FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy
+FROM python:3.11-slim
 
-RUN useradd -m appuser
 WORKDIR /app
 
+# Copiar requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ESTA LÍNEA ES VITAL:
-RUN playwright install --with-deps chromium
-
-COPY --chown=appuser:appuser . .
-USER appuser
+# Copiar aplicación
+COPY app.py .
+COPY index.html .
+COPY indexInstagram.html .
+COPY indexHosting.html . 2>/dev/null || true
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-10000} app:app --workers 2 --timeout 120"]
+CMD ["sh", "-c", "python app.py"]
