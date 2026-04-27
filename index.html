@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Scraper Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #13131a;
+            --border: #1e1e2e;
+            --text: #f0f0f5;
+            --muted: #6b6b80;
+            --accent-purple: #a855f7;
+            --accent-blue: #3b82f6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        /* Fondo con efecto de resplandor */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at center, rgba(124, 58, 237, 0.05) 0%, transparent 50%);
+            z-index: -1;
+        }
+
+        .container { max-width: 1200px; width: 100%; }
+
+        header { text-align: center; margin-bottom: 60px; }
+
+        h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: clamp(2.5rem, 8vw, 4rem);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            margin-bottom: 16px;
+            background: linear-gradient(to bottom, #fff 40%, rgba(255,255,255,0.5));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 60px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 32px;
+            text-decoration: none;
+            color: inherit;
+            position: relative;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            background: #1a1a24;
+            border-color: rgba(255,255,255,0.1);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+
+        /* Colores específicos para cada tarjeta */
+        .card-ig:hover { border-color: #e1306c; }
+        .card-host:hover { border-color: var(--accent-purple); }
+        .card-fb:hover { border-color: var(--accent-blue); }
+
+        .card-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            background: rgba(255,255,255,0.03);
+        }
+
+        .card-ig .card-icon { background: linear-gradient(135deg, #833ab4, #fd1d1d); }
+        .card-host .card-icon { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+        .card-fb .card-icon { background: linear-gradient(135deg, #1877f2, #0054a6); }
+
+        .card-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .card-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: auto;
+        }
+
+        .tag {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status {
+            position: absolute;
+            top: 32px;
+            right: 32px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 10px #22c55e;
+        }
+
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+    <a href="/logout" style="position:fixed; bottom:20px; right:20px; color:#6b6b80; text-decoration:none; font-size:12px; border:1px solid #1e1e2e; padding:5px 10px; border-radius:5px;">
+        Cerrar sesión segura 🔒
+    </a>
+    <div class="container">
+        <header>
+            <h1>Social Hub</h1>
+            <p style="color: var(--muted)">Selecciona una herramienta para comenzar</p>
+        </header>
+
+        <div class="grid">
+            <a href="/instagram" class="card card-ig">
+                <div class="card-icon">📸</div>
+                <div>
+                    <div class="card-title">Instagram</div>
+                    <div class="card-desc">Análisis de seguidores, engagement y métricas de cuentas.</div>
+                </div>
+                <div class="card-tags">
+                    <span class="tag">Followers</span>
+                    <span class="tag">Engagement</span>
+                </div>
+                <div class="status"><span class="status-dot"></span>Local</div>
+            </a>
+
+            <a href="/hosting" class="card card-host">
+                <div class="card-icon">🌐</div>
+                <div>
+                    <div class="card-title">Monitoreo Hosting</div>
+                    <div class="card-desc">Verifica el estado online/offline de múltiples sitios web de forma masiva.</div>
+                </div>
+                <div class="card-tags">
+                    <span class="tag">CSV Upload</span>
+                    <span class="tag">Uptime</span>
+                    <span class="tag">Status</span>
+                </div>
+                <div class="status"><span class="status-dot" style="background:#a855f7; box-shadow:0 0 10px #a855f7;"></span>Nuevo</div>
+            </a>
+
+            <a href="http://localhost:5001" class="card card-fb" target="_blank">
+                <div class="card-icon">📘</div>
+                <div>
+                    <div class="card-title">Facebook</div>
+                    <div class="card-desc">Analiza páginas de empresa, likes y seguidores en el puerto 5001.</div>
+                </div>
+                <div class="card-tags">
+                    <span class="tag">Likes</span>
+                    <span class="tag">API</span>
+                </div>
+                <div class="status"><span class="status-dot" style="background:#3b82f6; box-shadow:0 0 10px #3b82f6;"></span>Externo</div>
+            </a>
+        </div>
+
+        <footer>
+            App Local Multi-Herramientas · 2024
+        </footer>
+    </div>
+</body>
+</html>
