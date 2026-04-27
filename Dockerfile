@@ -14,4 +14,4 @@ USER appuser
 
 EXPOSE 10000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "app:app", "--workers", "2", "--timeout", "120"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-10000} app:app --workers 2 --timeout 120"]
