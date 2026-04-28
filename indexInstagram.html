@@ -411,8 +411,8 @@
                 <div id="importMessage" class="message"></div>
                 
                 <div class="tabs">
-                    <button class="tab-btn active" onclick="switchTab('csvImport')">CSV</button>
-                    <button class="tab-btn" onclick="switchTab('manual')">Manual</button>
+                    <button class="tab-btn active" onclick="switchTab('csvImport', this)">CSV</button>
+                    <button class="tab-btn" onclick="switchTab('manual', this)">Manual</button>
                 </div>
                 
                 <!-- Tab CSV -->
@@ -543,406 +543,447 @@
     </div>
     
     <script>
-        // Cambia la definición de API_URL al principio de tu <script>
-        const API_URL = '/api'; // Esto evita problemas de dominios y puertos
-
-        
+        // Detectar si estamos en el portal o acceso directo
+        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:7860/api'  // Si está en servidor local
+            : window.location.origin + '/api';  // Si está en otra URL
         let accounts = [];
-        let history  = [];
-        let charts   = {};
+        let history = [];
+        let charts = {};
         let isLoggedIn = false;
-
-        // ── Notificaciones ────────────────────────────────────────
-        let _toastTimer = null;
-        function showMessage(message, type = 'success') {
-            const el = document.getElementById('importMessage');
-            el.className = `message ${type} show`;
-            el.textContent = message;
-            clearTimeout(_toastTimer);
-            _toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
-        }
-
-        // ── Login / Logout ────────────────────────────────────────
+        
         async function loginInstagram() {
-            const fileInput = document.getElementById('cookiesFile');
-            if (!fileInput.files[0]) {
-                showMessage('Selecciona el archivo JSON de cookies primero', 'error');
-                return;
-            }
-            const loginBtn = document.getElementById('loginBtn');
-            loginBtn.disabled = true;
-            loginBtn.textContent = '⏳ Cargando...';
             try {
-                const text    = await fileInput.files[0].text();
+                const fileInput = document.getElementById('cookiesFile');
+                if (!fileInput.files[0]) {
+                    showMessage('Por favor selecciona el archivo JSON de cookies', 'error');
+                    return;
+                }
+
+                const loginBtn = document.getElementById('loginBtn');
+                loginBtn.disabled = true;
+                loginBtn.textContent = '⏳ Cargando cookies...';
+
+                // Leer el archivo JSON
+                const text = await fileInput.files[0].text();
                 const cookies = JSON.parse(text);
-                const resp    = await fetch(`${API_URL}/login-cookie`, {
+
+                const response = await fetch(`${API_URL}/login-cookie`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cookies }),
+                    body: JSON.stringify({ cookies: cookies })
                 });
-                const data = await resp.json();
+
+                const data = await response.json();
+
                 if (data.success) {
                     isLoggedIn = true;
-                    loginBtn.style.display  = 'none';
-                    document.getElementById('logoutBtn').style.display   = 'inline-block';
+                    document.getElementById('loginBtn').style.display = 'none';
+                    document.getElementById('logoutBtn').style.display = 'inline-block';
                     document.getElementById('loginStatus').style.display = 'block';
-                    showMessage(data.message || '✅ Cookies cargadas. Ya puedes actualizar.');
+                    showMessage('✅ Sesión iniciada. Ya puedes actualizar las cuentas.', 'success');
                 } else {
-                    showMessage(`❌ ${data.error}`, 'error');
+                    showMessage(`❌ Error: ${data.error}`, 'error');
                     loginBtn.disabled = false;
                     loginBtn.textContent = '🔐 Cargar cookies e iniciar sesión';
                 }
-            } catch (err) {
-                showMessage(`❌ ${err.message}`, 'error');
-                loginBtn.disabled = false;
-                loginBtn.textContent = '🔐 Cargar cookies e iniciar sesión';
+            } catch (error) {
+                showMessage(error.message, 'error');
+                document.getElementById('loginBtn').disabled = false;
+                document.getElementById('loginBtn').textContent = '🔐 Cargar cookies e iniciar sesión';
             }
         }
-
+        
         function logoutInstagram() {
-            if (!confirm('¿Desconectarse?')) return;
-            isLoggedIn = false;
-            document.getElementById('loginBtn').style.display   = 'inline-block';
-            document.getElementById('loginBtn').disabled        = false;
-            document.getElementById('loginBtn').textContent     = '🔐 Cargar cookies e iniciar sesión';
-            document.getElementById('logoutBtn').style.display  = 'none';
-            document.getElementById('loginStatus').style.display = 'none';
-            document.getElementById('cookiesFile').value        = '';
-            showMessage('✅ Desconectado');
+            if (confirm('¿Desconectarse de Instagram?')) {
+                isLoggedIn = false;
+                document.getElementById('loginBtn').style.display = 'inline-block';
+                document.getElementById('loginBtn').disabled = false;
+                document.getElementById('loginBtn').textContent = '🔐 Cargar cookies e iniciar sesión';
+                document.getElementById('logoutBtn').style.display = 'none';
+                document.getElementById('loginStatus').style.display = 'none';
+                document.getElementById('cookiesFile').value = '';
+                showMessage('✅ Desconectado');
+            }
         }
-
-        // ── Carga de datos ────────────────────────────────────────
-        // Ejemplo de función de carga corregida
+        
         async function loadAccounts() {
             try {
-                const resp = await fetch(`${API_URL}/accounts`);
-                // Si el servidor devuelve HTML en vez de JSON, aquí verás el error
-                const contentType = resp.headers.get("content-type");
-                if (!contentType || !contentType.includes("application/json")) {
-                    console.error("El servidor no devolvió JSON. Revisa las rutas en app.py");
-                    return;
-                }
-                const data = await resp.json();
+                const response = await fetch(`${API_URL}/accounts`);
+                const data = await response.json();
                 accounts = data.accounts || [];
                 updateUI();
-            } catch (e) {
-                console.error('Error cargando cuentas:', e);
+            } catch (error) {
+                showMessage('Error al cargar cuentas', 'error');
             }
         }
-
+        
         async function loadHistory() {
             try {
-                const resp = await fetch(`${API_URL}/history`);
-                const data = await resp.json();
+                const response = await fetch(`${API_URL}/history`);
+                const data = await response.json();
                 history = data.history || [];
                 updateCharts();
-            } catch (e) {
-                console.error('loadHistory:', e);
+            } catch (error) {
+                console.error('Error loading history:', error);
             }
         }
-
-        // ── Tabs ──────────────────────────────────────────────────
-        function switchTab(tab) {
+        
+        function switchTab(tab, btnEl) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById(tab).classList.add('active');
-            event.target.classList.add('active');
+            (btnEl || event.target).classList.add('active');
         }
-
-        // ── Importar CSV ──────────────────────────────────────────
+        
+        function showMessage(message, type = 'success') {
+            const messageEl = document.getElementById('importMessage');
+            messageEl.className = `message ${type} show`;
+            messageEl.textContent = message;
+            setTimeout(() => {
+                messageEl.classList.remove('show');
+            }, 4000);
+        }
+        
         async function importCSV() {
-            const fileInput = document.getElementById('csvFile');
-            if (!fileInput.files[0]) return alert("Selecciona un archivo");
-
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-
-            try {
-                const resp = await fetch('/api/upload-csv', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                // ESTO EVITA EL ERROR DE JSON
-                if (!resp.ok) {
-                    const text = await resp.text();
-                    console.error("Error del servidor:", text);
-                    throw new Error("El servidor respondió con un error");
-                }
-
-                const result = await resp.json();
-                if (result.success) {
-                    accounts = result.accounts;
-                    updateAccountsTable();
-                    alert(`Importadas ${result.added} cuentas nuevas`);
-                }
-            } catch (e) {
-                console.error(e);
-                alert("Error al importar: Revisa la consola.");
-            }
+            const file = document.getElementById('csvFile').files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                await sendCSVData(e.target.result);
+            };
+            reader.readAsText(file);
         }
-
+        
         async function importCSVText() {
             const text = document.getElementById('csvText').value.trim();
-            if (!text) { showMessage('Ingresa datos CSV', 'error'); return; }
+            if (!text) {
+                showMessage('Por favor ingresa datos CSV', 'error');
+                return;
+            }
             await sendCSVData(text);
         }
-
+        
         async function sendCSVData(csvData) {
             try {
-                const resp = await fetch(`${API_URL}/import-csv`, {
+                const response = await fetch(`${API_URL}/import-csv`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ csvData }),
+                    body: JSON.stringify({ csvData })
                 });
-                const data = await resp.json();
+                
+                const data = await response.json();
+                
                 if (data.success) {
-                    showMessage(data.message);
+                    showMessage(`${data.message}`);
                     document.getElementById('csvText').value = '';
                     document.getElementById('csvFile').value = '';
-                    accounts = data.accounts || accounts;
-                    updateUI();
+                    await loadAccounts();
                 } else {
                     showMessage(data.error || 'Error al importar', 'error');
                 }
-            } catch (e) {
-                showMessage(e.message, 'error');
+            } catch (error) {
+                showMessage(error.message, 'error');
             }
         }
-
+        
         async function addAccountManual() {
-            const usuario   = document.getElementById('manualUser').value.trim();
+            const usuario = document.getElementById('manualUser').value.trim();
             const encargada = document.getElementById('manualResponsible').value.trim();
-            const url       = document.getElementById('manualURL').value.trim();
+            const url = document.getElementById('manualURL').value.trim();
+            
             if (!usuario || !encargada || !url) {
-                showMessage('Completa todos los campos', 'error'); return;
+                showMessage('Por favor completa todos los campos', 'error');
+                return;
             }
-            await sendCSVData(`Usuario,Encargada,URL\n${usuario},${encargada},${url}`);
-            document.getElementById('manualUser').value        = '';
+            
+            const csvData = `Usuario,Encargada,URL\n${usuario},${encargada},${url}`;
+            await sendCSVData(csvData);
+            
+            document.getElementById('manualUser').value = '';
             document.getElementById('manualResponsible').value = '';
-            document.getElementById('manualURL').value         = '';
+            document.getElementById('manualURL').value = '';
         }
-
-        // ── Actualizar cuenta individual ──────────────────────────
-        async function fetchFollowers(usuario, btn) {
-            btn.disabled    = true;
-            btn.textContent = '⏳';
+        
+        async function fetchFollowers(usuario, btnEl) {
+            const button = btnEl || event.target;
             try {
-                const resp = await fetch(`${API_URL}/fetch-followers`, {
+                button.disabled = true;
+                button.textContent = '⏳';
+
+                const response = await fetch(`${API_URL}/fetch-followers`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario }),
+                    body: JSON.stringify({ usuario })
                 });
-                const data = await resp.json();
+
+                const data = await response.json();
+
                 if (data.success) {
-                    showMessage(data.message);
                     accounts = data.accounts || accounts;
+                    showMessage(`✅ ${usuario}: ${(data.data.followers || data.data.seguidores || 0).toLocaleString()} seguidores`);
                     updateUI();
-                    loadHistory();
+                    await loadHistory();
                 } else {
-                    showMessage(`⚠️ ${data.error} — actualiza manualmente`, 'warning');
+                    showMessage(`⚠️ No se pudo obtener automáticamente. Actualiza manualmente.`, 'warning');
                     promptManualUpdate(usuario);
                 }
-            } catch (e) {
-                showMessage(e.message, 'error');
+            } catch (error) {
+                showMessage(error.message, 'error');
+            } finally {
+                button.disabled = false;
+                button.textContent = '🔄';
             }
-            btn.disabled    = false;
-            btn.textContent = '🔄';
         }
-
+        
         function promptManualUpdate(usuario) {
-            const seg = prompt(`Seguidores para @${usuario}:`);
-            if (seg === null || isNaN(seg) || parseInt(seg) < 0) return;
-            const eng = prompt(`Engagement Rate (%) para @${usuario}:`, '0') || '0';
-            updateFollowersManually(usuario, parseInt(seg), parseFloat(eng));
+            const followers = prompt(`Ingresa el número de seguidores para @${usuario}:`);
+            if (followers === null) return;
+            
+            if (isNaN(followers) || parseInt(followers) < 0) {
+                showMessage('Número inválido', 'error');
+                return;
+            }
+            
+            const engagement = prompt(`Ingresa el Engagement Rate (%) para @${usuario}: (opcional)`, '0');
+            
+            updateFollowersManually(usuario, parseInt(followers), engagement ? parseFloat(engagement) : 0);
         }
-
+        
         async function updateFollowersManually(usuario, seguidores, engagementRate) {
             try {
-                const resp = await fetch(`${API_URL}/update-followers`, {
+                const response = await fetch(`${API_URL}/update-followers`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario, seguidores, engagementRate }),
+                    body: JSON.stringify({ usuario, seguidores, engagementRate })
                 });
-                const data = await resp.json();
+                
+                const data = await response.json();
+                
                 if (data.success) {
                     showMessage(data.message);
-                    accounts = data.accounts || accounts;
-                    updateUI();
+                    await loadAccounts();
+                    await loadHistory();
                 } else {
-                    showMessage(data.error || 'Error', 'error');
+                    showMessage(data.error || 'Error al actualizar', 'error');
                 }
-            } catch (e) {
-                showMessage(e.message, 'error');
+            } catch (error) {
+                showMessage(error.message, 'error');
             }
         }
-
-        // ── Actualizar todas las cuentas (batch) ──────────────────
+        
         async function fetchAllFollowers() {
-            const btn = event.target;
-            btn.disabled    = true;
-            btn.textContent = '⏳ Actualizando...';
-            showMessage(`⏳ Actualizando ${accounts.length} cuentas con un único browser...`, 'warning');
+            const button = event.target;
+            button.disabled = true;
+            button.textContent = '⏳ Actualizando...';
+
+            showMessage('⏳ Actualizando todas las cuentas en lote (puede tardar varios minutos)...', 'warning');
+
             try {
-                const resp = await fetch(`${API_URL}/fetch-all-batch`, {
+                const response = await fetch(`${API_URL}/fetch-all-batch`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}),
+                    headers: { 'Content-Type': 'application/json' }
                 });
-                const data = await resp.json();
+
+                const data = await response.json();
+
                 if (data.success) {
                     accounts = data.accounts || accounts;
                     updateUI();
-                    loadHistory();
-                    showMessage(`${data.message}${data.week ? ' — semana ' + data.week : ''}`);
+                    await loadHistory();
+                    showMessage(`✅ ${data.message}`);
                 } else {
-                    showMessage(`❌ ${data.error}`, 'error');
+                    showMessage(`❌ Error: ${data.error}`, 'error');
                 }
-            } catch (e) {
-                showMessage(e.message, 'error');
+            } catch (error) {
+                showMessage(`❌ ${error.message}`, 'error');
+            } finally {
+                button.disabled = false;
+                button.textContent = '🔄 Actualizar Todo';
             }
-            btn.disabled    = false;
-            btn.textContent = '🔄 Actualizar Todo';
         }
-
-        // ── Eliminar cuenta ───────────────────────────────────────
+        
         async function deleteAccount(usuario) {
-            if (!confirm(`¿Eliminar @${usuario}?`)) return;
-            try {
-                const resp = await fetch(`${API_URL}/account/${usuario}`, { method: 'DELETE' });
-                const data = await resp.json();
-                if (data.success) {
-                    showMessage(data.message);
-                    accounts = data.accounts || accounts;
-                    updateUI();
-                } else {
-                    showMessage(data.error || 'Error', 'error');
+            if (confirm(`¿Deseas eliminar @${usuario}?`)) {
+                try {
+                    const response = await fetch(`${API_URL}/account/${usuario}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        showMessage('Cuenta eliminada');
+                        await loadAccounts();
+                    }
+                } catch (error) {
+                    showMessage(error.message, 'error');
                 }
-            } catch (e) {
-                showMessage(e.message, 'error');
             }
         }
-
-        // ── Exportar CSV ──────────────────────────────────────────
-        function exportData() {
-            window.location.href = `${API_URL}/export-csv`;
-        }
-
-        // ── Limpiar todo ──────────────────────────────────────────
-        async function clearData() {
-            if (!confirm('¿Eliminar TODOS los datos?')) return;
-            try {
-                const resp = await fetch(`${API_URL}/clear-all`, { method: 'DELETE' });
-                const data = await resp.json();
-                if (data.success) {
-                    accounts = [];
-                    history  = [];
-                    updateUI();
-                    updateCharts();
-                    showMessage('✅ Datos eliminados');
-                }
-            } catch (e) {
-                showMessage(e.message, 'error');
-            }
-        }
-
-        // ── Render UI ─────────────────────────────────────────────
+        
         function updateUI() {
             updateStats();
             updateAccountsTable();
         }
-
+        
         function updateStats() {
-            const with_data = accounts.filter(a => a.seguidores > 0);
-            const total     = with_data.reduce((s, a) => s + (a.seguidores || 0), 0);
-            const avgEng    = with_data.length
-                ? (with_data.reduce((s, a) => s + (a.engagementRate || 0), 0) / with_data.length).toFixed(2)
-                : 0;
-            const maxFol    = with_data.length ? Math.max(...with_data.map(a => a.seguidores)) : 0;
-            document.getElementById('totalAccounts').textContent  = accounts.length;
-            document.getElementById('totalFollowers').textContent = total.toLocaleString();
-            document.getElementById('avgEngagement').textContent  = avgEng + '%';
-            document.getElementById('maxFollowers').textContent   = maxFol.toLocaleString();
-        }
-
-        function fmt(n) { return (n != null && n !== 0) ? Number(n).toLocaleString() : '-'; }
-
-        function updateAccountsTable() {
-            const tbody = document.getElementById('accountsBody');
-            if (!accounts.length) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999">No hay cuentas. Importa un CSV para comenzar.</td></tr>';
+            if (accounts.length === 0) {
+                document.getElementById('totalAccounts').textContent = '0';
+                document.getElementById('totalFollowers').textContent = '0';
+                document.getElementById('avgEngagement').textContent = '0%';
+                document.getElementById('maxFollowers').textContent = '0';
                 return;
             }
-            // Dentro de tu función updateAccountsTable()
-            tbody.innerHTML = accounts.map(a => `
+            
+            const withData = accounts.filter(a => a.seguidores !== null);
+            const totalFollowers = withData.reduce((sum, a) => sum + a.seguidores, 0);
+            const avgEngagement = withData.length > 0 
+                ? (withData.reduce((sum, a) => sum + (a.engagementRate || 0), 0) / withData.length).toFixed(2)
+                : 0;
+            const maxFollowers = withData.length > 0 ? Math.max(...withData.map(a => a.seguidores)) : 0;
+            
+            document.getElementById('totalAccounts').textContent = accounts.length;
+            document.getElementById('totalFollowers').textContent = totalFollowers.toLocaleString();
+            document.getElementById('avgEngagement').textContent = avgEngagement + '%';
+            document.getElementById('maxFollowers').textContent = maxFollowers.toLocaleString();
+        }
+        
+        function updateAccountsTable() {
+            const tbody = document.getElementById('accountsBody');
+            
+            if (accounts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #999;">No hay cuentas.</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = accounts.map(account => `
                 <tr>
-                    <td>@${a.usuario}</td>
-                    <td>${a.encargada || '-'}</td>
-                    <td>${a.seguidores?.toLocaleString() || 0}</td>
-                    <td style="text-align:center">${a.posts_week || 0}</td>
-                    <td>${a.total_views_week?.toLocaleString() || 0}</td>
-                    <td>${a.engagementRate || 0}%</td>
-                    <td style="font-size:0.8em">${a.lastUpdate || '-'}</td>
-                    <td><span class="status-badge">${a.status || 'Pending'}</span></td>
+                    <td><a href="${account.url}" target="_blank" class="account-link">@${account.usuario}</a></td>
+                    <td><span class="responsible">${account.encargada}</span></td>
+                    <td>${account.seguidores !== null ? account.seguidores.toLocaleString() : '-'}</td>
+                    <td>${account.posts_week !== null && account.posts_week !== undefined ? account.posts_week : '-'}</td>
+                    <td>${account.total_views_week !== null && account.total_views_week !== undefined && account.total_views_week > 0 ? account.total_views_week.toLocaleString() : '-'}</td>
+                    <td>${account.engagementRate != null ? Number(account.engagementRate).toFixed(2) + '%' : '-'}</td>
+                    <td>${account.lastUpdate || '-'}</td>
+                    <td><span class="status-badge status-${account.status}">${account.status}</span></td>
                     <td>
-                        <button onclick="fetchFollowers('${a.usuario}', this)">🔄</button>
+                        <button onclick="fetchFollowers('${account.usuario}', this)" style="padding: 5px 10px; font-size: 0.9em;">🔄</button>
+                        <button onclick="deleteAccount('${account.usuario}')" class="danger" style="padding: 5px 10px; font-size: 0.9em;">🗑️</button>
                     </td>
                 </tr>
             `).join('');
         }
-
-        // ── Gráficos ──────────────────────────────────────────────
+        
         function updateCharts() {
-            if (!history.length) {
+            if (history.length === 0) {
                 document.getElementById('chartsSection').style.display = 'none';
                 return;
             }
+            
             document.getElementById('chartsSection').style.display = 'grid';
+            
             const usuarios = [...new Set(history.map(h => h.usuario))];
-            const colors   = ['#667eea','#764ba2','#f093fb','#4facfe','#43e97b','#fa709a','#30cfd0','#330867'];
-
-            const datasets = usuarios.map((u, i) => {
-                const uh = history.filter(h => h.usuario === u).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+            const colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#30cfd0', '#330867'];
+            
+            // Gráfico de crecimiento
+            const datasets = usuarios.map((usuario, idx) => {
+                const userHistory = history.filter(h => h.usuario === usuario).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+                
                 return {
-                    label: u, data: uh.map(h => h.seguidores),
-                    borderColor: colors[i % colors.length],
-                    backgroundColor: colors[i % colors.length] + '33',
-                    borderWidth: 2, tension: 0.4, fill: true,
+                    label: usuario,
+                    data: userHistory.map(h => h.seguidores),
+                    borderColor: colors[idx % colors.length],
+                    backgroundColor: colors[idx % colors.length] + '33',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true
                 };
             });
+            
             updateChart('growthChart', {
                 type: 'line',
-                data: { labels: [...new Set(history.map(h => h.fecha))].sort(), datasets },
-                options: { responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom' } },
-                    scales: { y: { beginAtZero: true } } },
+                data: {
+                    labels: [...new Set(history.map(h => h.fecha))].sort(),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
             });
-
-            const latestData = usuarios.map(u =>
-                history.filter(h => h.usuario === u).sort((a, b) => new Date(b.fecha) - new Date(a.fecha))[0]
-            ).filter(Boolean).sort((a, b) => b.seguidores - a.seguidores);
-
+            
+            // Gráfico de ranking
+            const latestData = [];
+            usuarios.forEach(usuario => {
+                const latest = history.filter(h => h.usuario === usuario).sort((a, b) => new Date(b.fecha) - new Date(a.fecha))[0];
+                if (latest) latestData.push(latest);
+            });
+            
+            latestData.sort((a, b) => b.seguidores - a.seguidores);
+            
             updateChart('rankingChart', {
                 type: 'bar',
                 data: {
                     labels: latestData.map(d => d.usuario),
-                    datasets: [{ label: 'Seguidores', data: latestData.map(d => d.seguidores),
-                        backgroundColor: colors.slice(0, latestData.length) }],
+                    datasets: [{
+                        label: 'Seguidores',
+                        data: latestData.map(d => d.seguidores),
+                        backgroundColor: colors.slice(0, latestData.length)
+                    }]
                 },
-                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } } },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
             });
         }
-
-        function updateChart(id, config) {
-            if (charts[id]) charts[id].destroy();
-            charts[id] = new Chart(document.getElementById(id), config);
+        
+        function updateChart(canvasId, config) {
+            const ctx = document.getElementById(canvasId);
+            if (charts[canvasId]) charts[canvasId].destroy();
+            charts[canvasId] = new Chart(ctx, config);
         }
-
-        // ── Init ──────────────────────────────────────────────────
+        
+        async function exportData() {
+            window.location.href = `${API_URL}/export-csv`;
+        }
+        
+        async function clearData() {
+            if (confirm('¿Deseas eliminar TODOS los datos?')) {
+                try {
+                    const response = await fetch(`${API_URL}/clear-all`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        accounts = [];
+                        history = [];
+                        updateUI();
+                        showMessage('Todos los datos eliminados');
+                    }
+                } catch (error) {
+                    showMessage(error.message, 'error');
+                }
+            }
+        }
+        
+        // Inicializar
         loadAccounts();
         loadHistory();
-        setInterval(loadAccounts, 30000);
+        setInterval(() => {
+            loadAccounts();
+            loadHistory();
+        }, 30000); // Refrescar cada 30 segundos
     </script>
 </body>
 </html>

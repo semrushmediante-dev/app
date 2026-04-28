@@ -1,8 +1,12 @@
 services:
   - type: web
-    name: social-scraper-hub
+    name: instagram-analyzer
     runtime: docker
     dockerfilePath: ./Dockerfile
     envVars:
       - key: PORT
         value: 10000
+    disk:
+      name: app-data
+      mountPath: /app
+      sizeGB: 1

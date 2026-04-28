@@ -132,6 +132,11 @@
         .card-fb::before { background: linear-gradient(135deg, rgba(24,119,242,0.08), rgba(10,79,168,0.08)); }
         .card-fb:hover { border-color: #1877f2; box-shadow: 0 20px 60px rgba(24,119,242,0.15); }
 
+        /* ── NUEVA: tarjeta Whisper ── */
+        .card-whisper { border-color: #1e1530; }
+        .card-whisper::before { background: linear-gradient(135deg, rgba(124,106,255,0.08), rgba(167,139,250,0.08)); }
+        .card-whisper:hover { border-color: #7c6aff; box-shadow: 0 20px 60px rgba(124,106,255,0.15); }
+
         .card-icon {
             width: 56px;
             height: 56px;
@@ -144,6 +149,7 @@
 
         .card-ig .card-icon { background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
         .card-fb .card-icon { background: linear-gradient(135deg, #1877f2, #0a4fa8); }
+        .card-whisper .card-icon { background: linear-gradient(135deg, #6d5aff, #a78bfa); }
 
         .card-title {
             font-family: 'Syne', sans-serif;
@@ -190,6 +196,7 @@
         .card:hover .card-arrow { transform: translate(3px, -3px); }
         .card-ig:hover .card-arrow { background: rgba(240,148,51,0.2); border-color: #f09433; }
         .card-fb:hover .card-arrow { background: rgba(24,119,242,0.2); border-color: #1877f2; }
+        .card-whisper:hover .card-arrow { background: rgba(124,106,255,0.2); border-color: #7c6aff; }
 
         .status-dot {
             display: inline-block;
@@ -208,6 +215,20 @@
 
         .status { font-size: 0.78rem; color: var(--muted); }
 
+        /* La tarjeta Whisper ocupa toda la fila inferior si hay 2 arriba */
+        @media (min-width: 601px) {
+            .card-whisper {
+                grid-column: 1 / -1;
+                flex-direction: row;
+                align-items: center;
+                padding: 28px 36px;
+            }
+            .card-whisper .card-icon { flex-shrink: 0; }
+            .card-whisper .card-body { flex: 1; }
+            .card-whisper .card-tags { margin-top: 12px; }
+            .card-whisper .card-arrow { position: static; flex-shrink: 0; margin-left: auto; }
+        }
+
         footer {
             text-align: center;
             margin-top: 48px;
@@ -224,6 +245,7 @@
         </header>
 
         <div class="grid">
+            <!-- ── Instagram (sin cambios) ── -->
             <a href="indexInstagram.html" class="card card-ig">
                 <div class="card-arrow">↗</div>
                 <div class="card-icon">📸</div>
@@ -241,7 +263,8 @@
                 <div class="status"><span class="status-dot"></span>Web App Local</div>
             </a>
 
-            <div class="card card-fb" style="opacity:0.5; cursor:not-allowed;">
+            <!-- ── Facebook (sin cambios) ── -->
+            <a href="http://localhost:5001" class="card card-fb" target="_blank">
                 <div class="card-arrow">↗</div>
                 <div class="card-icon">📘</div>
                 <div>
@@ -254,12 +277,30 @@
                     <span class="tag">Posts/semana</span>
                     <span class="tag">Engagement</span>
                 </div>
-                <div class="status" style="color:#e74c3c;">Próximamente</div>
-            </div>
+                <div class="status"><span class="status-dot"></span>Puerto 5001</div>
+            </a>
+
+            <!-- ── Whisper — NUEVO ── -->
+            <a href="indexWhisper.html" class="card card-whisper">
+                <div class="card-arrow">↗</div>
+                <div class="card-icon">🎙️</div>
+                <div class="card-body">
+                    <div class="card-title">Transcriptor de Audio</div>
+                    <div class="card-desc">Transcribe audios y vídeos a texto usando faster-whisper. Local, sin enviar datos a ningún servidor externo.</div>
+                    <div class="card-tags">
+                        <span class="tag">MP3 / MP4</span>
+                        <span class="tag">WAV / OGG / M4A</span>
+                        <span class="tag">Detección de idioma</span>
+                        <span class="tag">Múltiples modelos</span>
+                        <span class="tag">Exportar .txt</span>
+                    </div>
+                    <div class="status" style="margin-top:12px"><span class="status-dot"></span>Puerto 7861</div>
+                </div>
+            </a>
         </div>
 
         <footer>
-            Instagram integrado en esta app · Facebook en puerto 5001 (opcional)
+            Instagram integrado en esta app · Facebook en puerto 5001 (opcional) · Whisper en puerto 7861
         </footer>
     </div>
 </body>
