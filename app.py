@@ -82,7 +82,19 @@ def get_last_week_range():
     label = f"{last_monday.strftime('%d/%m')} - {last_sunday.strftime('%d/%m/%Y')}"
     return start_ts, end_ts, label
 
-async def scrape_profile(page, username):
+async def establish_session(page, context):
+    """
+    Navega a instagram.com para activar la sesión con las cookies cargadas
+    y devuelve el csrftoken actualizado (necesario para API calls).
+    """
+    await page.goto('https://www.instagram.com/', wait_until='domcontentloaded', timeout=30000)
+    await page.wait_for_timeout(2000)
+    cookies = await context.cookies()
+    csrf = next((c['value'] for c in cookies if c['name'] == 'csrftoken'), '')
+    logger.info(f"Sesión establecida. csrf={'ok' if csrf else 'MISSING'}")
+    return csrf
+
+async def scrape_profile(page, username, csrf=''):
     """
     Llama a la API interna de Instagram y devuelve todos los campos necesarios.
     Filtra reels de la semana pasada (lunes a domingo).
@@ -93,6 +105,8 @@ async def scrape_profile(page, username):
             'X-IG-App-ID': '936619743392459',
             'X-Requested-With': 'XMLHttpRequest',
             'Accept': 'application/json',
+            'Referer': 'https://www.instagram.com/',
+            'X-CSRFToken': csrf,
         })
 
         if not resp.ok:
@@ -188,12 +202,13 @@ async def _open_context(p):
     return browser, context
 
 async def fetch_account_data(username):
-    """Abre un browser propio y raspa una cuenta"""
+    """Abre un browser propio, establece sesión y raspa una cuenta"""
     try:
         async with async_playwright() as p:
             browser, context = await _open_context(p)
             page = await context.new_page()
-            result = await scrape_profile(page, username)
+            csrf = await establish_session(page, context)
+            result = await scrape_profile(page, username, csrf)
             await browser.close()
             return result
     except Exception as e:
@@ -201,15 +216,17 @@ async def fetch_account_data(username):
         return {'success': False, 'error': str(e)}
 
 async def fetch_all_batch(usernames):
-    """Raspa todas las cuentas con un único browser"""
+    """Raspa todas las cuentas con un único browser — una sola sesión"""
     results = {}
     try:
         async with async_playwright() as p:
             browser, context = await _open_context(p)
             page = await context.new_page()
+            # Navegar una sola vez para activar sesión y obtener csrf
+            csrf = await establish_session(page, context)
             for username in usernames:
-                results[username] = await scrape_profile(page, username)
-                await page.wait_for_timeout(1200)   # pausa entre cuentas
+                results[username] = await scrape_profile(page, username, csrf)
+                await page.wait_for_timeout(1500)
             await browser.close()
     except Exception as e:
         logger.error(f"fetch_all_batch error: {e}")
