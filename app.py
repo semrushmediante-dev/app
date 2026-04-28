@@ -278,6 +278,25 @@ def import_csv():
         logger.error(f"Error importing CSV: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
+@app.route('/api/login-cookie', methods=['POST'])
+def login_cookie():
+    """Guardar cookies de Instagram desde archivo JSON"""
+    try:
+        req_data = request.get_json()
+        cookies = req_data.get('cookies', [])
+
+        if not cookies:
+            return jsonify({"success": False, "error": "No se proporcionaron cookies"}), 400
+
+        with open(COOKIES_FILE, 'w') as f:
+            json.dump(cookies, f, indent=2)
+
+        logger.info("Cookies saved successfully")
+        return jsonify({"success": True, "message": "Cookies guardadas correctamente"})
+    except Exception as e:
+        logger.error(f"Error saving cookies: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
 @app.route('/api/login-browser', methods=['POST'])
 def login_browser():
     """Login a Instagram con navegador (Playwright)"""

@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: social-scraper-hub
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
