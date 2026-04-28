@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Servicio principal: Flask + Playwright
+  instagram-scraper:
+    container_name: instagram-scraper-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    ports:
+      - "7860:7860"  # Puerto Flask
+    
+    environment:
+      # Variables de entorno
+      FLASK_ENV: production
+      FLASK_APP: app.py
+      PORT: 7860
+      PYTHONUNBUFFERED: 1  # Para ver logs en tiempo real
+    
+    volumes:
+      # Persistencia de datos
+      - ./data:/app/data  # Para guardar JSON y cookies
+      - ./uploads:/app/uploads  # Para archivos CSV y descargas
+    
+    # Health check para Docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    restart: unless-stopped
+    
+    # Logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    networks:
+      - instagram-network
+
+  # (Opcional) PostgreSQL para almacenar datos persistentes
+  # Descomenta si quieres usar base de datos en lugar de JSON
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: instagram-db
+  #   environment:
+  #     POSTGRES_USER: instagram_user
+  #     POSTGRES_PASSWORD: secure_password_here
+  #     POSTGRES_DB: instagram_scraper
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U instagram_user"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - instagram-network
+  #   restart: unless-stopped
+
+  # (Opcional) Nginx como reverse proxy
+  # Descomenta si quieres usar Nginx para servir la app
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: instagram-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro  # Para HTTPS
+  #   depends_on:
+  #     - instagram-scraper
+  #   networks:
+  #     - instagram-network
+  #   restart: unless-stopped
+
+volumes:
+  # postgres_data:  # Descomenta si usas PostgreSQL
+
+networks:
+  instagram-network:
+    driver: bridge
