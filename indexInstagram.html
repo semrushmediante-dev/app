@@ -1,36 +1,913 @@
-// Reemplaza o actualiza la función updateAccountsTable en tu script de indexInstagram.html
-
-function fmt(n) {
-    if (n === null || n === undefined || n === 0) return '-';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return n.toLocaleString();
-}
-
-function updateAccountsTable() {
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Seguidores Instagram</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            color: #555;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.1s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #764ba2;
+        }
+        
+        button.secondary:hover {
+            background: #653a88;
+        }
+        
+        button.danger {
+            background: #e74c3c;
+        }
+        
+        button.danger:hover {
+            background: #c0392b;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+        
+        .file-input-label {
+            display: block;
+            padding: 10px;
+            background: #f0f0f0;
+            border: 2px dashed #667eea;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            color: #667eea;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .file-input-label:hover {
+            background: #e8e8ff;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.95em;
+        }
+        
+        table th {
+            background: #f5f5f5;
+            color: #333;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table tr:hover {
+            background: #f9f9f9;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-box .value {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .stat-box .label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        
+        .message.success {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+        
+        .message.error {
+            background: #fadbd8;
+            color: #c0392b;
+        }
+        
+        .message.warning {
+            background: #fdebd0;
+            color: #d68910;
+        }
+        
+        .message.show {
+            display: block;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .tab-btn {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            color: #666;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+        }
+        
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .status-pending {
+            background: #ffeaa7;
+            color: #d68910;
+        }
+        
+        .status-completed {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+        
+        .status-failed {
+            background: #fadbd8;
+            color: #c0392b;
+        }
+        
+        .responsible {
+            background: #f0f0f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .account-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .account-link:hover {
+            text-decoration: underline;
+        }
+        
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+            z-index: 1000;
+            transition: background 0.3s;
+            font-size: 0.95em;
+        }
+        
+        .back-button:hover {
+            background: rgba(102, 126, 234, 1);
+        }
+        
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            header h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back-button">← Volver al Portal</a>
     
+    <div class="container">
+        <header>
+            <h1>📊 Analizador de Seguidores Instagram</h1>
+            <p>Con web scraping automático</p>
+        </header>
+        
+        <!-- Panel de login -->
+        <div class="card full-width" id="loginPanel" style="margin-bottom: 30px;">
+            <h2>🔐 Login en Instagram</h2>
+            <div id="loginMessage" class="message"></div>
+            <p style="color: #666; margin-bottom: 15px; font-size: 0.95em;">
+                <strong>Cómo obtener las cookies:</strong><br>
+                1. Instala la extensión <strong>Cookie-Editor</strong> en Chrome<br>
+                2. Ve a instagram.com e inicia sesión<br>
+                3. Abre Cookie-Editor → Export → Export as JSON<br>
+                4. Sube el archivo aquí abajo
+            </p>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>📁 Subir archivo de cookies JSON</label>
+                <input type="file" id="cookiesFile" accept=".json" style="width:100%; padding: 8px; border: 2px dashed #ccc; border-radius: 6px;">
+            </div>
+            <button onclick="loginInstagram()" id="loginBtn">🔐 Cargar cookies e iniciar sesión</button>
+            <button onclick="logoutInstagram()" id="logoutBtn" style="display: none;" class="danger">🚪 Cerrar sesión</button>
+            <div id="loginStatus" style="margin-top: 15px; padding: 12px; background: #e8f5e9; border-radius: 6px; color: #27ae60; display: none;">
+                ✅ Sesión iniciada correctamente
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <!-- Panel de entrada -->
+            <div class="card">
+                <h2>➕ Importar Cuentas</h2>
+                
+                <div id="importMessage" class="message"></div>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('csvImport')">CSV</button>
+                    <button class="tab-btn" onclick="switchTab('manual')">Manual</button>
+                </div>
+                
+                <!-- Tab CSV -->
+                <div id="csvImport" class="tab-content active">
+                    <div class="form-group">
+                        <label>Cargar archivo CSV</label>
+                        <div class="file-input-wrapper">
+                            <label class="file-input-label">
+                                📁 Click para cargar CSV
+                                <input type="file" id="csvFile" accept=".csv" onchange="importCSV()">
+                            </label>
+                        </div>
+                        <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                            <strong>Formato:</strong> Usuario,Encargada,URL
+                        </p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>O pega datos CSV</label>
+                        <textarea id="csvText" placeholder="Usuario,Encargada,URL&#10;clinica_javier_miranda,Amanda,https://www.instagram.com/clinica_javier_miranda/"></textarea>
+                    </div>
+                    
+                    <button onclick="importCSVText()">Importar Datos</button>
+                </div>
+                
+                <!-- Tab Manual -->
+                <div id="manual" class="tab-content">
+                    <div class="form-group">
+                        <label>Usuario Instagram</label>
+                        <input type="text" id="manualUser" placeholder="ej: clinica_javier_miranda">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Encargada</label>
+                        <input type="text" id="manualResponsible" placeholder="ej: Amanda">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>URL de Instagram</label>
+                        <input type="text" id="manualURL" placeholder="https://www.instagram.com/usuario/">
+                    </div>
+                    
+                    <button onclick="addAccountManual()">Agregar Cuenta</button>
+                </div>
+            </div>
+            
+            <!-- Panel de estadísticas -->
+            <div class="card">
+                <h2>📈 Estadísticas</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="label">Total Cuentas</div>
+                        <div class="value" id="totalAccounts">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Total Seguidores</div>
+                        <div class="value" id="totalFollowers">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Engagement Prom.</div>
+                        <div class="value" id="avgEngagement">0%</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Máximo</div>
+                        <div class="value" id="maxFollowers">0</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <button onclick="fetchAllFollowers()" class="secondary">🔄 Actualizar Todo</button>
+                    <button onclick="exportData()" class="secondary">📥 Exportar CSV</button>
+                    <button onclick="clearData()" class="danger">🗑️ Limpiar</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tabla de cuentas -->
+        <div class="card full-width">
+            <h2>📋 Cuentas</h2>
+            
+            <table id="accountsTable">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Encargada</th>
+                        <th>Seguidores</th>
+                        <th>Reels/Sem</th>
+                        <th>Visualizaciones</th>
+                        <th>Engagement (%)</th>
+                        <th>Última Actualización</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="accountsBody">
+                    <tr>
+                        <td colspan="9" style="text-align: center; color: #999;">
+                            No hay cuentas. Importa un CSV para comenzar.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Gráficos -->
+        <div class="main-grid" id="chartsSection" style="display: none;">
+            <div class="card">
+                <h2>📈 Crecimiento</h2>
+                <div class="chart-container">
+                    <canvas id="growthChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>🥇 Ranking</h2>
+                <div class="chart-container">
+                    <canvas id="rankingChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Análisis por encargada -->
+        <div class="card full-width" id="analysisSection" style="display: none;">
+            <h2>👥 Análisis por Encargada</h2>
+            <div id="analysisContent"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = window.location.origin + '/api';
+        let accounts = [];
+        let history  = [];
+        let charts   = {};
+        let isLoggedIn = false;
 
+        // ── Notificaciones ────────────────────────────────────────
+        let _toastTimer = null;
+        function showMessage(message, type = 'success') {
+            const el = document.getElementById('importMessage');
+            el.className = `message ${type} show`;
+            el.textContent = message;
+            clearTimeout(_toastTimer);
+            _toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
+        }
 
-    const tbody = document.getElementById('accountsBody');
-    if (!accounts.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#999">No hay cuentas. Sube un CSV o agrega una manualmente.</td></tr>';
-        return;
-    }
+        // ── Login / Logout ────────────────────────────────────────
+        async function loginInstagram() {
+            const fileInput = document.getElementById('cookiesFile');
+            if (!fileInput.files[0]) {
+                showMessage('Selecciona el archivo JSON de cookies primero', 'error');
+                return;
+            }
+            const loginBtn = document.getElementById('loginBtn');
+            loginBtn.disabled = true;
+            loginBtn.textContent = '⏳ Cargando...';
+            try {
+                const text    = await fileInput.files[0].text();
+                const cookies = JSON.parse(text);
+                const resp    = await fetch(`${API_URL}/login-cookie`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cookies }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    isLoggedIn = true;
+                    loginBtn.style.display  = 'none';
+                    document.getElementById('logoutBtn').style.display   = 'inline-block';
+                    document.getElementById('loginStatus').style.display = 'block';
+                    showMessage(data.message || '✅ Cookies cargadas. Ya puedes actualizar.');
+                } else {
+                    showMessage(`❌ ${data.error}`, 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '🔐 Cargar cookies e iniciar sesión';
+                }
+            } catch (err) {
+                showMessage(`❌ ${err.message}`, 'error');
+                loginBtn.disabled = false;
+                loginBtn.textContent = '🔐 Cargar cookies e iniciar sesión';
+            }
+        }
 
-    // Dentro de tu función updateAccountsTable()
-    tbody.innerHTML = accounts.map(a => `
-        <tr>
-            <td>@${a.usuario}</td>
-            <td>${a.encargada || '-'}</td>
-            <td>${a.seguidores?.toLocaleString() || 0}</td>
-            <td style="text-align:center">${a.posts_week || 0}</td>
-            <td>${a.total_views_week?.toLocaleString() || 0}</td>
-            <td>${a.engagementRate || 0}%</td>
-            <td style="font-size:0.8em">${a.lastUpdate || '-'}</td>
-            <td><span class="status-badge">${a.status || 'Pending'}</span></td>
-            <td>
-                <button onclick="fetchFollowers('${a.usuario}', this)">🔄</button>
-            </td>
-        </tr>
-    `).join('');
-}
+        function logoutInstagram() {
+            if (!confirm('¿Desconectarse?')) return;
+            isLoggedIn = false;
+            document.getElementById('loginBtn').style.display   = 'inline-block';
+            document.getElementById('loginBtn').disabled        = false;
+            document.getElementById('loginBtn').textContent     = '🔐 Cargar cookies e iniciar sesión';
+            document.getElementById('logoutBtn').style.display  = 'none';
+            document.getElementById('loginStatus').style.display = 'none';
+            document.getElementById('cookiesFile').value        = '';
+            showMessage('✅ Desconectado');
+        }
+
+        // ── Carga de datos ────────────────────────────────────────
+        async function loadAccounts() {
+            try {
+                const resp = await fetch(`${API_URL}/accounts`);
+                const data = await resp.json();
+                accounts = data.accounts || [];
+                updateUI();
+            } catch (e) {
+                console.error('loadAccounts:', e);
+            }
+        }
+
+        async function loadHistory() {
+            try {
+                const resp = await fetch(`${API_URL}/history`);
+                const data = await resp.json();
+                history = data.history || [];
+                updateCharts();
+            } catch (e) {
+                console.error('loadHistory:', e);
+            }
+        }
+
+        // ── Tabs ──────────────────────────────────────────────────
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // ── Importar CSV ──────────────────────────────────────────
+        async function importCSV() {
+            const file = document.getElementById('csvFile').files[0];
+            if (!file) return;
+            const text = await file.text();
+            await sendCSVData(text);
+        }
+
+        async function importCSVText() {
+            const text = document.getElementById('csvText').value.trim();
+            if (!text) { showMessage('Ingresa datos CSV', 'error'); return; }
+            await sendCSVData(text);
+        }
+
+        async function sendCSVData(csvData) {
+            try {
+                const resp = await fetch(`${API_URL}/import-csv`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ csvData }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showMessage(data.message);
+                    document.getElementById('csvText').value = '';
+                    document.getElementById('csvFile').value = '';
+                    accounts = data.accounts || accounts;
+                    updateUI();
+                } else {
+                    showMessage(data.error || 'Error al importar', 'error');
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+        }
+
+        async function addAccountManual() {
+            const usuario   = document.getElementById('manualUser').value.trim();
+            const encargada = document.getElementById('manualResponsible').value.trim();
+            const url       = document.getElementById('manualURL').value.trim();
+            if (!usuario || !encargada || !url) {
+                showMessage('Completa todos los campos', 'error'); return;
+            }
+            await sendCSVData(`Usuario,Encargada,URL\n${usuario},${encargada},${url}`);
+            document.getElementById('manualUser').value        = '';
+            document.getElementById('manualResponsible').value = '';
+            document.getElementById('manualURL').value         = '';
+        }
+
+        // ── Actualizar cuenta individual ──────────────────────────
+        async function fetchFollowers(usuario, btn) {
+            btn.disabled    = true;
+            btn.textContent = '⏳';
+            try {
+                const resp = await fetch(`${API_URL}/fetch-followers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuario }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showMessage(data.message);
+                    accounts = data.accounts || accounts;
+                    updateUI();
+                    loadHistory();
+                } else {
+                    showMessage(`⚠️ ${data.error} — actualiza manualmente`, 'warning');
+                    promptManualUpdate(usuario);
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+            btn.disabled    = false;
+            btn.textContent = '🔄';
+        }
+
+        function promptManualUpdate(usuario) {
+            const seg = prompt(`Seguidores para @${usuario}:`);
+            if (seg === null || isNaN(seg) || parseInt(seg) < 0) return;
+            const eng = prompt(`Engagement Rate (%) para @${usuario}:`, '0') || '0';
+            updateFollowersManually(usuario, parseInt(seg), parseFloat(eng));
+        }
+
+        async function updateFollowersManually(usuario, seguidores, engagementRate) {
+            try {
+                const resp = await fetch(`${API_URL}/update-followers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuario, seguidores, engagementRate }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showMessage(data.message);
+                    accounts = data.accounts || accounts;
+                    updateUI();
+                } else {
+                    showMessage(data.error || 'Error', 'error');
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+        }
+
+        // ── Actualizar todas las cuentas (batch) ──────────────────
+        async function fetchAllFollowers() {
+            const btn = event.target;
+            btn.disabled    = true;
+            btn.textContent = '⏳ Actualizando...';
+            showMessage(`⏳ Actualizando ${accounts.length} cuentas con un único browser...`, 'warning');
+            try {
+                const resp = await fetch(`${API_URL}/fetch-all-batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    accounts = data.accounts || accounts;
+                    updateUI();
+                    loadHistory();
+                    showMessage(`${data.message}${data.week ? ' — semana ' + data.week : ''}`);
+                } else {
+                    showMessage(`❌ ${data.error}`, 'error');
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+            btn.disabled    = false;
+            btn.textContent = '🔄 Actualizar Todo';
+        }
+
+        // ── Eliminar cuenta ───────────────────────────────────────
+        async function deleteAccount(usuario) {
+            if (!confirm(`¿Eliminar @${usuario}?`)) return;
+            try {
+                const resp = await fetch(`${API_URL}/account/${usuario}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.success) {
+                    showMessage(data.message);
+                    accounts = data.accounts || accounts;
+                    updateUI();
+                } else {
+                    showMessage(data.error || 'Error', 'error');
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+        }
+
+        // ── Exportar CSV ──────────────────────────────────────────
+        function exportData() {
+            window.location.href = `${API_URL}/export-csv`;
+        }
+
+        // ── Limpiar todo ──────────────────────────────────────────
+        async function clearData() {
+            if (!confirm('¿Eliminar TODOS los datos?')) return;
+            try {
+                const resp = await fetch(`${API_URL}/clear-all`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.success) {
+                    accounts = [];
+                    history  = [];
+                    updateUI();
+                    updateCharts();
+                    showMessage('✅ Datos eliminados');
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+        }
+
+        // ── Render UI ─────────────────────────────────────────────
+        function updateUI() {
+            updateStats();
+            updateAccountsTable();
+        }
+
+        function updateStats() {
+            const with_data = accounts.filter(a => a.seguidores > 0);
+            const total     = with_data.reduce((s, a) => s + (a.seguidores || 0), 0);
+            const avgEng    = with_data.length
+                ? (with_data.reduce((s, a) => s + (a.engagementRate || 0), 0) / with_data.length).toFixed(2)
+                : 0;
+            const maxFol    = with_data.length ? Math.max(...with_data.map(a => a.seguidores)) : 0;
+            document.getElementById('totalAccounts').textContent  = accounts.length;
+            document.getElementById('totalFollowers').textContent = total.toLocaleString();
+            document.getElementById('avgEngagement').textContent  = avgEng + '%';
+            document.getElementById('maxFollowers').textContent   = maxFol.toLocaleString();
+        }
+
+        function fmt(n) { return (n != null && n !== 0) ? Number(n).toLocaleString() : '-'; }
+
+        function updateAccountsTable() {
+            const tbody = document.getElementById('accountsBody');
+            if (!accounts.length) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999">No hay cuentas. Importa un CSV para comenzar.</td></tr>';
+                return;
+            }
+            // Dentro de tu función updateAccountsTable()
+            tbody.innerHTML = accounts.map(a => `
+                <tr>
+                    <td>@${a.usuario}</td>
+                    <td>${a.encargada || '-'}</td>
+                    <td>${a.seguidores?.toLocaleString() || 0}</td>
+                    <td style="text-align:center">${a.posts_week || 0}</td>
+                    <td>${a.total_views_week?.toLocaleString() || 0}</td>
+                    <td>${a.engagementRate || 0}%</td>
+                    <td style="font-size:0.8em">${a.lastUpdate || '-'}</td>
+                    <td><span class="status-badge">${a.status || 'Pending'}</span></td>
+                    <td>
+                        <button onclick="fetchFollowers('${a.usuario}', this)">🔄</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // ── Gráficos ──────────────────────────────────────────────
+        function updateCharts() {
+            if (!history.length) {
+                document.getElementById('chartsSection').style.display = 'none';
+                return;
+            }
+            document.getElementById('chartsSection').style.display = 'grid';
+            const usuarios = [...new Set(history.map(h => h.usuario))];
+            const colors   = ['#667eea','#764ba2','#f093fb','#4facfe','#43e97b','#fa709a','#30cfd0','#330867'];
+
+            const datasets = usuarios.map((u, i) => {
+                const uh = history.filter(h => h.usuario === u).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+                return {
+                    label: u, data: uh.map(h => h.seguidores),
+                    borderColor: colors[i % colors.length],
+                    backgroundColor: colors[i % colors.length] + '33',
+                    borderWidth: 2, tension: 0.4, fill: true,
+                };
+            });
+            updateChart('growthChart', {
+                type: 'line',
+                data: { labels: [...new Set(history.map(h => h.fecha))].sort(), datasets },
+                options: { responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { y: { beginAtZero: true } } },
+            });
+
+            const latestData = usuarios.map(u =>
+                history.filter(h => h.usuario === u).sort((a, b) => new Date(b.fecha) - new Date(a.fecha))[0]
+            ).filter(Boolean).sort((a, b) => b.seguidores - a.seguidores);
+
+            updateChart('rankingChart', {
+                type: 'bar',
+                data: {
+                    labels: latestData.map(d => d.usuario),
+                    datasets: [{ label: 'Seguidores', data: latestData.map(d => d.seguidores),
+                        backgroundColor: colors.slice(0, latestData.length) }],
+                },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } } },
+            });
+        }
+
+        function updateChart(id, config) {
+            if (charts[id]) charts[id].destroy();
+            charts[id] = new Chart(document.getElementById(id), config);
+        }
+
+        // ── Init ──────────────────────────────────────────────────
+        loadAccounts();
+        loadHistory();
+        setInterval(loadAccounts, 30000);
+    </script>
+</body>
+</html>
