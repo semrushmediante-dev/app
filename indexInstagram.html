@@ -779,38 +779,28 @@
             const button = event.target;
             button.disabled = true;
             button.textContent = '⏳ Actualizando...';
-            
-            showMessage('⏳ Obteniendo datos de todas las cuentas...', 'warning');
-            
-            let completed = 0;
-            let failed = 0;
-            
-            for (let account of accounts) {
-                try {
-                    const response = await fetch(`${API_URL}/fetch-followers`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ usuario: account.usuario })
-                    });
-                    
-                    const data = await response.json();
-                    if (data.success) {
-                        completed++;
-                    } else {
-                        failed++;
-                    }
-                } catch (error) {
-                    failed++;
+            showMessage(`⏳ Iniciando actualización de ${accounts.length} cuentas (un solo browser)...`, 'warning');
+
+            try {
+                const response = await fetch(`${API_URL}/fetch-all-batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.accounts) accounts = data.accounts;
+                    updateUI();
+                    showMessage(data.message);
+                } else {
+                    showMessage(`❌ ${data.error}`, 'error');
                 }
-                
-                // Esperar un poco entre requests
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                showMessage(error.message, 'error');
             }
-            
-            await loadAccounts();
-            await loadHistory();
-            
-            showMessage(`✅ Completado: ${completed}/${accounts.length}`);
+
             button.disabled = false;
             button.textContent = '🔄 Actualizar Todo';
         }

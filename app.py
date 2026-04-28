@@ -60,100 +60,143 @@ def update_data(data):
 # FUNCIONES PLAYWRIGHT
 # ═════════════════════════════════════════════════════════════
 
+SAMESITE_MAP = {
+    'no_restriction': 'None',
+    'unspecified': 'None',
+    'lax': 'Lax',
+    'strict': 'Strict',
+    'none': 'None',
+}
+
+def normalize_cookies(cookies):
+    """Normalizar cookies del navegador para compatibilidad con Playwright"""
+    result = []
+    for cookie in cookies:
+        c = dict(cookie)
+        ss = str(c.get('sameSite', '')).lower()
+        if ss not in ('strict', 'lax', 'none'):
+            c['sameSite'] = SAMESITE_MAP.get(ss, 'None')
+        if c.get('expires') == -1:
+            c.pop('expires', None)
+        result.append(c)
+    return result
+
+def get_browser_args():
+    return ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+            '--disable-blink-features=AutomationControlled']
+
+async def scrape_profile(page, username):
+    """Extraer datos del perfil vía la API interna de Instagram"""
+    try:
+        api_url = f'https://www.instagram.com/api/v1/users/web_profile_info/?username={username}'
+        resp = await page.request.get(
+            api_url,
+            headers={
+                'X-IG-App-ID': '936619743392459',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            }
+        )
+        if resp.ok:
+            data = await resp.json()
+            user = data.get('data', {}).get('user', {})
+            if user:
+                return {
+                    'success': True,
+                    'seguidores': user.get('edge_followed_by', {}).get('count', 0),
+                    'following': user.get('edge_follow', {}).get('count', 0),
+                    'posts': user.get('edge_owner_to_timeline_media', {}).get('count', 0),
+                    'bio': user.get('biography', ''),
+                }
+    except Exception as e:
+        logger.warning(f"API scrape failed for {username}: {e}")
+    return {'success': False}
+
+async def fetch_account_data(username, cookies_file):
+    """Obtener datos de una cuenta (abre su propio browser)"""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True, args=get_browser_args())
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            if os.path.exists(cookies_file):
+                with open(cookies_file, 'r') as f:
+                    raw = json.load(f)
+                await context.add_cookies(normalize_cookies(raw))
+
+            page = await context.new_page()
+            result = await scrape_profile(page, username)
+            await browser.close()
+
+            if result['success']:
+                return {
+                    'success': True,
+                    'username': username,
+                    'followers': result['seguidores'],
+                    'following': result['following'],
+                    'posts': result['posts'],
+                    'bio': result['bio'],
+                }
+            return {'success': False, 'error': 'No se pudo obtener datos del perfil'}
+    except Exception as e:
+        logger.error(f"Fetch error: {e}")
+        return {'success': False, 'error': str(e)}
+
+async def fetch_all_batch(usernames, cookies_file):
+    """Obtener datos de múltiples cuentas con un único browser"""
+    results = {}
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True, args=get_browser_args())
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            if os.path.exists(cookies_file):
+                with open(cookies_file, 'r') as f:
+                    raw = json.load(f)
+                await context.add_cookies(normalize_cookies(raw))
+
+            page = await context.new_page()
+            for username in usernames:
+                logger.info(f"Scraping {username}...")
+                result = await scrape_profile(page, username)
+                results[username] = result
+                await page.wait_for_timeout(800)
+
+            await browser.close()
+    except Exception as e:
+        logger.error(f"Batch fetch error: {e}")
+        for u in usernames:
+            if u not in results:
+                results[u] = {'success': False, 'error': str(e)}
+    return results
+
 async def login_instagram_browser(username, password):
     """Login a Instagram usando navegador con Playwright"""
     try:
         async with async_playwright() as p:
-            # Usar headless=True en producción
-            headless = not os.environ.get('PLAYWRIGHT_HEADLESS') == 'false'
-            browser = await p.chromium.launch(
-                headless=headless,
-                args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage']
-            )
-            
+            browser = await p.chromium.launch(headless=True, args=get_browser_args())
             context = await browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             )
             page = await context.new_page()
-            
-            logger.info("Opening Instagram login...")
             await page.goto('https://www.instagram.com/accounts/login/')
             await page.wait_for_timeout(2000)
-            
-            # Llenar usuario
             await page.fill('input[name="username"]', username)
             await page.wait_for_timeout(500)
-            
-            # Llenar contraseña
             await page.fill('input[name="password"]', password)
             await page.wait_for_timeout(500)
-            
-            # Click login
             await page.click('button[type="button"]')
             await page.wait_for_timeout(3000)
-            
-            # Obtener cookies
             cookies = await context.cookies()
-            
-            # Guardar cookies
             with open(COOKIES_FILE, 'w') as f:
                 json.dump(cookies, f, indent=2)
-            
             await browser.close()
-            
             logger.info("Login successful, cookies saved")
             return {"success": True, "message": "Login successful"}
-            
     except Exception as e:
         logger.error(f"Login error: {e}")
-        return {"success": False, "error": str(e)}
-
-async def fetch_account_data(username, cookies_file):
-    """Obtener datos de cuenta usando Playwright"""
-    try:
-        async with async_playwright() as p:
-            headless = not os.environ.get('PLAYWRIGHT_HEADLESS') == 'false'
-            browser = await p.chromium.launch(
-                headless=headless,
-                args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage']
-            )
-            
-            context = await browser.new_context()
-            
-            # Cargar cookies si existen
-            if os.path.exists(cookies_file):
-                with open(cookies_file, 'r') as f:
-                    cookies = json.load(f)
-                    await context.add_cookies(cookies)
-            
-            page = await context.new_page()
-            
-            # Ir al perfil
-            logger.info(f"Fetching data for {username}...")
-            await page.goto(f'https://www.instagram.com/{username}/')
-            await page.wait_for_timeout(2000)
-            
-            # Extraer datos (simplificado)
-            try:
-                # Esto es un ejemplo - Instagram bloquea scraping
-                # En producción usarías Instagram API
-                followers = "N/A"
-                posts = "N/A"
-            except:
-                followers = "N/A"
-                posts = "N/A"
-            
-            await browser.close()
-            
-            return {
-                "success": True,
-                "username": username,
-                "followers": followers,
-                "posts": posts
-            }
-            
-    except Exception as e:
-        logger.error(f"Fetch error: {e}")
         return {"success": False, "error": str(e)}
 
 # ═════════════════════════════════════════════════════════════
@@ -288,10 +331,12 @@ def login_cookie():
         if not cookies:
             return jsonify({"success": False, "error": "No se proporcionaron cookies"}), 400
 
+        # Normalizar antes de guardar para evitar errores de sameSite
+        normalized = normalize_cookies(cookies)
         with open(COOKIES_FILE, 'w') as f:
-            json.dump(cookies, f, indent=2)
+            json.dump(normalized, f, indent=2)
 
-        logger.info("Cookies saved successfully")
+        logger.info(f"Cookies saved ({len(normalized)} cookies)")
         return jsonify({"success": True, "message": "Cookies guardadas correctamente"})
     except Exception as e:
         logger.error(f"Error saving cookies: {e}")
@@ -349,6 +394,51 @@ def fetch_followers():
             
     except Exception as e:
         logger.error(f"Error fetching followers: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/fetch-all-batch', methods=['POST'])
+def fetch_all_batch_endpoint():
+    """Obtener datos de todas las cuentas usando un único browser"""
+    try:
+        if not os.path.exists(COOKIES_FILE):
+            return jsonify({"success": False, "error": "No hay cookies guardadas. Sube el archivo de cookies primero."}), 400
+
+        data = get_data()
+        accounts = data.get('accounts', [])
+        if not accounts:
+            return jsonify({"success": False, "error": "No hay cuentas para actualizar"}), 400
+
+        usernames = [a['usuario'] for a in accounts]
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results = loop.run_until_complete(fetch_all_batch(usernames, COOKIES_FILE))
+        loop.close()
+
+        updated = 0
+        for account in data['accounts']:
+            r = results.get(account['usuario'], {})
+            if r.get('success'):
+                account['seguidores'] = r.get('seguidores', account.get('seguidores', 0))
+                account['following'] = r.get('following', account.get('following', 0))
+                account['posts'] = r.get('posts', account.get('posts', 0))
+                if r.get('bio'):
+                    account['bio'] = r['bio']
+                account['lastUpdate'] = datetime.now().strftime('%Y-%m-%d')
+                account['status'] = 'completed'
+                updated += 1
+
+        update_data(data)
+        logger.info(f"Batch update: {updated}/{len(accounts)} accounts updated")
+        return jsonify({
+            "success": True,
+            "message": f"✅ {updated} de {len(accounts)} cuentas actualizadas",
+            "updated": updated,
+            "total": len(accounts),
+            "accounts": data['accounts']
+        })
+    except Exception as e:
+        logger.error(f"Error in batch fetch: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/update-followers', methods=['POST'])
