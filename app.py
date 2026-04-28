@@ -61,11 +61,12 @@ def update_data(data):
 # ═════════════════════════════════════════════════════════════
 
 SAMESITE_MAP = {
+    'strict': 'Strict',
+    'lax': 'Lax',
+    'none': 'None',
     'no_restriction': 'None',
     'unspecified': 'None',
-    'lax': 'Lax',
-    'strict': 'Strict',
-    'none': 'None',
+    '': 'None',
 }
 
 def normalize_cookies(cookies):
@@ -73,9 +74,10 @@ def normalize_cookies(cookies):
     result = []
     for cookie in cookies:
         c = dict(cookie)
+        # Siempre reemplazar sameSite — Playwright exige 'Strict'/'Lax'/'None' con mayúscula exacta
         ss = str(c.get('sameSite', '')).lower()
-        if ss not in ('strict', 'lax', 'none'):
-            c['sameSite'] = SAMESITE_MAP.get(ss, 'None')
+        c['sameSite'] = SAMESITE_MAP.get(ss, 'None')
+        # expires=-1 no es válido para Playwright
         if c.get('expires') == -1:
             c.pop('expires', None)
         result.append(c)
@@ -567,6 +569,22 @@ def server_error(error):
 # ═════════════════════════════════════════════════════════════
 # MAIN
 # ═════════════════════════════════════════════════════════════
+
+def repair_cookies_file():
+    """Normalizar cookies ya guardadas (se ejecuta al importar el módulo)"""
+    if os.path.exists(COOKIES_FILE):
+        try:
+            with open(COOKIES_FILE, 'r') as f:
+                raw = json.load(f)
+            fixed = normalize_cookies(raw)
+            with open(COOKIES_FILE, 'w') as f:
+                json.dump(fixed, f, indent=2)
+            logger.info(f"Cookies file repaired on startup ({len(fixed)} cookies)")
+        except Exception as e:
+            logger.warning(f"Could not repair cookies file: {e}")
+
+# Ejecutar al importar: cubre gunicorn y python directo
+repair_cookies_file()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
