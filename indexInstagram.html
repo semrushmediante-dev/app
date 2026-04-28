@@ -651,10 +651,35 @@
 
         // ── Importar CSV ──────────────────────────────────────────
         async function importCSV() {
-            const file = document.getElementById('csvFile').files[0];
-            if (!file) return;
-            const text = await file.text();
-            await sendCSVData(text);
+            const fileInput = document.getElementById('csvFile');
+            if (!fileInput.files[0]) return alert("Selecciona un archivo");
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const resp = await fetch('/api/upload-csv', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // ESTO EVITA EL ERROR DE JSON
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    console.error("Error del servidor:", text);
+                    throw new Error("El servidor respondió con un error");
+                }
+
+                const result = await resp.json();
+                if (result.success) {
+                    accounts = result.accounts;
+                    updateAccountsTable();
+                    alert(`Importadas ${result.added} cuentas nuevas`);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error al importar: Revisa la consola.");
+            }
         }
 
         async function importCSVText() {
