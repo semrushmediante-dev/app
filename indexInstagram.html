@@ -381,27 +381,160 @@
             <p>Con web scraping automático</p>
         </header>
         
-        <!-- Panel de login -->
-        <div class="card full-width" id="loginPanel" style="margin-bottom: 30px;">
-            <h2>🔐 Login en Instagram</h2>
-            <div id="loginMessage" class="message"></div>
-            <p style="color: #666; margin-bottom: 15px; font-size: 0.95em;">
-                <strong>Cómo obtener las cookies:</strong><br>
-                1. Instala la extensión <strong>Cookie-Editor</strong> en Chrome<br>
-                2. Ve a instagram.com e inicia sesión<br>
-                3. Abre Cookie-Editor → Export → Export as JSON<br>
-                4. Sube el archivo aquí abajo
-            </p>
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label>📁 Subir archivo de cookies JSON</label>
-                <input type="file" id="cookiesFile" accept=".json" style="width:100%; padding: 8px; border: 2px dashed #ccc; border-radius: 6px;">
-            </div>
-            <button onclick="loginInstagram()" id="loginBtn">🔐 Cargar cookies e iniciar sesión</button>
-            <button onclick="logoutInstagram()" id="logoutBtn" style="display: none;" class="danger">🚪 Cerrar sesión</button>
-            <div id="loginStatus" style="margin-top: 15px; padding: 12px; background: #e8f5e9; border-radius: 6px; color: #27ae60; display: none;">
-                ✅ Sesión iniciada correctamente
-            </div>
-        </div>
+        <!-- REEMPLAZA la sección de LOGIN en tu indexInstagram.html con esto: -->
+
+<div class="card" style="background: #f8f9ff; border-left: 4px solid #667eea;">
+    <h2>🔐 Autenticación de Instagram</h2>
+    
+    <!-- OPCIÓN 1: Login automático -->
+    <div class="form-group">
+        <p style="color: #666; margin-bottom: 15px;">
+            <strong>Opción 1:</strong> Abre el navegador y haz login en Instagram
+        </p>
+        <button id="loginBtn" onclick="doLogin()" style="width: 100%; background: #667eea;">
+            🔐 Iniciar Sesión en Instagram
+        </button>
+        <small style="color: #999; display: block; margin-top: 8px;">
+            Se abrirá una ventana del navegador. Completa el login y espera.
+        </small>
+    </div>
+    
+    <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+    
+    <!-- OPCIÓN 2: Subir cookies desde archivo -->
+    <div id="uploadCookiesSection" class="form-group" style="display: none;">
+        <p style="color: #666; margin-bottom: 15px;">
+            <strong>Opción 2:</strong> Sube un archivo JSON con cookies
+        </p>
+        <label>Archivo de Cookies (JSON):</label>
+        <input type="file" id="cookiesFile" accept=".json" style="padding: 10px;">
+        <button onclick="uploadCookiesFile()" style="width: 100%; margin-top: 10px;">
+            📤 Subir Cookies
+        </button>
+        <small style="color: #999; display: block; margin-top: 8px;">
+            Descarga tus cookies de Instagram usando una extensión de navegador.
+        </small>
+    </div>
+    
+    <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+    
+    <!-- Status -->
+    <div id="authStatus" style="padding: 12px; background: #fff3cd; border-radius: 6px; color: #856404; font-size: 0.9em;">
+        ⏳ Verificando sesión...
+    </div>
+</div>
+
+<!-- Añade estas funciones en un <script> al final de tu HTML: -->
+<script>
+const API_URL = ''; // API en la misma raíz
+
+async function doLogin() {
+    console.log('Iniciando proceso de login...');
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Abriendo navegador...';
+    
+    try {
+        const response = await fetch(`${API_URL}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('✅ Login completado. Ahora puedes obtener datos.', 'success');
+            btn.textContent = '✅ Sesión Activa';
+            await checkLoginStatus();
+        } else {
+            showMessage(`❌ Error: ${data.error}`, 'error');
+            btn.disabled = false;
+            btn.textContent = '🔐 Iniciar Sesión en Instagram';
+        }
+    } catch (error) {
+        console.error('Error en doLogin:', error);
+        showMessage(`Error: ${error.message}`, 'error');
+        btn.disabled = false;
+        btn.textContent = '🔐 Iniciar Sesión en Instagram';
+    }
+}
+
+async function uploadCookiesFile() {
+    console.log('Subiendo archivo de cookies...');
+    const fileInput = document.getElementById('cookiesFile');
+    
+    if (!fileInput || !fileInput.files[0]) {
+        showMessage('❌ Selecciona un archivo de cookies primero', 'error');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const response = await fetch(`${API_URL}/api/upload-cookies`, {
+            method: 'POST',
+            body: formData  // NO incluir Content-Type, el navegador lo pone automáticamente
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage(`✅ ${data.message}`, 'success');
+            await checkLoginStatus();
+        } else {
+            showMessage(`❌ Error: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error subiendo cookies:', error);
+        showMessage(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function checkLoginStatus() {
+    try {
+        const response = await fetch(`${API_URL}/api/check-login`);
+        const data = await response.json();
+        
+        const loginBtn = document.getElementById('loginBtn');
+        const uploadSection = document.getElementById('uploadCookiesSection');
+        const authStatus = document.getElementById('authStatus');
+        
+        if (data.logged_in) {
+            console.log('✅ Usuario logged in');
+            if (loginBtn) loginBtn.textContent = '✅ Sesión Activa';
+            if (uploadSection) uploadSection.style.display = 'none';
+            if (authStatus) {
+                authStatus.style.background = '#d4edda';
+                authStatus.style.color = '#155724';
+                authStatus.textContent = '✅ Sesión activa. Puedes obtener datos.';
+            }
+        } else {
+            console.log('❌ No hay sesión');
+            if (loginBtn) loginBtn.textContent = '🔐 Iniciar Sesión en Instagram';
+            if (uploadSection) uploadSection.style.display = 'block';
+            if (authStatus) {
+                authStatus.style.background = '#f8d7da';
+                authStatus.style.color = '#721c24';
+                authStatus.textContent = '⚠️ Sin sesión. Haz login para continuar.';
+            }
+        }
+    } catch (error) {
+        console.error('Error checking login:', error);
+    }
+}
+
+// Ejecutar al cargar
+document.addEventListener('DOMContentLoaded', () => {
+    checkLoginStatus();
+});
+
+// Hacer funciones globales
+window.doLogin = doLogin;
+window.uploadCookiesFile = uploadCookiesFile;
+window.checkLoginStatus = checkLoginStatus;
+</script>
         
         <div class="main-grid">
             <!-- Panel de entrada -->
@@ -544,7 +677,7 @@
     
     <script>
         // Detectar si estamos en el portal o acceso directo
-        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
             ? 'http://localhost:7860/api'  // Si está en servidor local
             : window.location.origin + '/api';  // Si está en otra URL
         let accounts = [];
@@ -995,6 +1128,102 @@
             loadAccounts();
             loadHistory();
         }, 30000); // Refrescar cada 30 segundos
+
+
+
+        // 🔧 FIX - Upload de Cookies Correcto
+// Añade esto al final de tu indexInstagram.html (antes del script final de cierre)
+
+// Función para hacer login (abre ventana del navegador)
+async function doLogin() {
+    console.log('Iniciando proceso de login...');
+    try {
+        const response = await fetch(`${API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('✅ Login completado. Ahora puedes obtener datos.', 'success');
+            await checkLoginStatus();
+        } else {
+            showMessage(`❌ Error: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error en doLogin:', error);
+        showMessage(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Función para subir cookies desde archivo
+async function uploadCookiesFile() {
+    console.log('Subiendo archivo de cookies...');
+    const fileInput = document.getElementById('cookiesFile');
+    
+    if (!fileInput || !fileInput.files[0]) {
+        showMessage('❌ Selecciona un archivo de cookies primero', 'error');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const response = await fetch(`${API_URL}/upload-cookies`, {
+            method: 'POST',
+            body: formData  // NO incluir Content-Type, el navegador lo pone automáticamente
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage(`✅ ${data.message}`, 'success');
+            await checkLoginStatus();
+        } else {
+            showMessage(`❌ Error: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error subiendo cookies:', error);
+        showMessage(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Función para chequear estado de login
+async function checkLoginStatus() {
+    try {
+        const response = await fetch(`${API_URL}/check-login`);
+        const data = await response.json();
+        
+        const loginBtn = document.getElementById('loginBtn');
+        const uploadSection = document.getElementById('uploadCookiesSection');
+        
+        if (data.logged_in) {
+            console.log('✅ Usuario logged in');
+            if (loginBtn) loginBtn.textContent = '✅ Sesión Activa';
+            if (uploadSection) uploadSection.style.display = 'none';
+        } else {
+            console.log('❌ No hay sesión');
+            if (loginBtn) loginBtn.textContent = '🔐 Iniciar Sesión';
+            if (uploadSection) uploadSection.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error checking login:', error);
+    }
+}
+
+// Ejecutar al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+    checkLoginStatus();
+});
+
+// Exportar funciones globalmente
+window.doLogin = doLogin;
+window.uploadCookiesFile = uploadCookiesFile;
+window.checkLoginStatus = checkLoginStatus;
+
     </script>
 </body>
 </html>
