@@ -543,7 +543,10 @@
     </div>
     
     <script>
-        const API_URL = window.location.origin + '/api';
+        // Cambia la definición de API_URL al principio de tu <script>
+        const API_URL = '/api'; // Esto evita problemas de dominios y puertos
+
+        
         let accounts = [];
         let history  = [];
         let charts   = {};
@@ -609,14 +612,21 @@
         }
 
         // ── Carga de datos ────────────────────────────────────────
+        // Ejemplo de función de carga corregida
         async function loadAccounts() {
             try {
                 const resp = await fetch(`${API_URL}/accounts`);
+                // Si el servidor devuelve HTML en vez de JSON, aquí verás el error
+                const contentType = resp.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error("El servidor no devolvió JSON. Revisa las rutas en app.py");
+                    return;
+                }
                 const data = await resp.json();
                 accounts = data.accounts || [];
                 updateUI();
             } catch (e) {
-                console.error('loadAccounts:', e);
+                console.error('Error cargando cuentas:', e);
             }
         }
 
