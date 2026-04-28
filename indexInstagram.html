@@ -8,42 +8,29 @@ function fmt(n) {
 }
 
 function updateAccountsTable() {
+    
+
+
     const tbody = document.getElementById('accountsBody');
     if (!accounts.length) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:#999">No hay cuentas. Sube un CSV o agrega una manualmente.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = accounts.map(a => {
-        const isUpdating = a.status === 'updating';
-        return `
-        <tr class="${isUpdating ? 'row-loading' : ''}">
-            <td>
-                <a href="${a.url || 'https://instagram.com/'+a.usuario}" target="_blank" class="account-link">
-                    @${a.usuario}
-                </a>
-            </td>
-            <td><span class="responsible">${a.encargada || 'Sin asignar'}</span></td>
-            <td style="font-weight:bold">${fmt(a.seguidores)}</td>
+    // Dentro de tu función updateAccountsTable()
+    tbody.innerHTML = accounts.map(a => `
+        <tr>
+            <td>@${a.usuario}</td>
+            <td>${a.encargada || '-'}</td>
+            <td>${a.seguidores?.toLocaleString() || 0}</td>
             <td style="text-align:center">${a.posts_week || 0}</td>
-            <td>${fmt(a.total_views_week)}</td>
+            <td>${a.total_views_week?.toLocaleString() || 0}</td>
+            <td>${a.engagementRate || 0}%</td>
+            <td style="font-size:0.8em">${a.lastUpdate || '-'}</td>
+            <td><span class="status-badge">${a.status || 'Pending'}</span></td>
             <td>
-                <strong style="color: ${a.engagementRate > 2 ? '#27ae60' : '#333'}">
-                    ${a.engagementRate ? a.engagementRate.toFixed(2) + '%' : '0.00%'}
-                </strong>
+                <button onclick="fetchFollowers('${a.usuario}', this)">🔄</button>
             </td>
-            <td style="font-size: 0.85em; color: #666">${a.lastUpdate || '-'}</td>
-            <td>
-                <span class="status-badge status-${(a.status || 'pending').toLowerCase()}">
-                    ${isUpdating ? 'Actualizando...' : (a.status || 'Pendiente')}
-                </span>
-            </td>
-            <td>
-                <button onclick="fetchFollowers('${a.usuario}', this)" ${isUpdating ? 'disabled' : ''} title="Actualizar">
-                    ${isUpdating ? '⏳' : '🔄'}
-                </button>
-                <button onclick="deleteAccount('${a.usuario}')" class="danger" title="Eliminar">🗑️</button>
-            </td>
-        </tr>`;
-    }).join('');
+        </tr>
+    `).join('');
 }
