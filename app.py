@@ -1,31 +1,26 @@
 import os
 import json
-import requests
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from datetime import datetime, timedelta
-import re
 import logging
 import asyncio
 from playwright.async_api import async_playwright
 
-# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
-# Configuración de almacenamiento
 DB_FILE = 'data.json'
 COOKIES_FILE = 'instagram_cookies.json'
 
 # ═════════════════════════════════════════════════════════════
-# FUNCIONES DE ALMACENAMIENTO
+# ALMACENAMIENTO
 # ═════════════════════════════════════════════════════════════
 
 def load_data():
-    """Cargar datos del archivo JSON"""
     try:
         if os.path.exists(DB_FILE):
             with open(DB_FILE, 'r', encoding='utf-8') as f:
@@ -35,7 +30,6 @@ def load_data():
     return {"accounts": [], "history": []}
 
 def save_data(data):
-    """Guardar datos al archivo JSON"""
     try:
         with open(DB_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -45,169 +39,191 @@ def save_data(data):
         return False
 
 def get_data():
-    """Obtener datos cacheados"""
     if not os.path.exists(DB_FILE):
-        default_data = {"accounts": [], "history": []}
-        save_data(default_data)
-        return default_data
+        d = {"accounts": [], "history": []}
+        save_data(d)
+        return d
     return load_data()
 
-def update_data(data):
-    """Actualizar datos y guardar"""
-    save_data(data)
-
 # ═════════════════════════════════════════════════════════════
-# FUNCIONES PLAYWRIGHT
+# COOKIES Y PLAYWRIGHT
 # ═════════════════════════════════════════════════════════════
 
 SAMESITE_MAP = {
-    'strict': 'Strict',
-    'lax': 'Lax',
-    'none': 'None',
-    'no_restriction': 'None',
-    'unspecified': 'None',
-    '': 'None',
+    'strict': 'Strict', 'lax': 'Lax', 'none': 'None',
+    'no_restriction': 'None', 'unspecified': 'None', '': 'None',
 }
 
 def normalize_cookies(cookies):
-    """Normalizar cookies del navegador para compatibilidad con Playwright"""
     result = []
     for cookie in cookies:
         c = dict(cookie)
-        # Siempre reemplazar sameSite — Playwright exige 'Strict'/'Lax'/'None' con mayúscula exacta
         ss = str(c.get('sameSite', '')).lower()
         c['sameSite'] = SAMESITE_MAP.get(ss, 'None')
-        # expires=-1 no es válido para Playwright
         if c.get('expires') == -1:
             c.pop('expires', None)
         result.append(c)
     return result
 
 def get_browser_args():
-    return ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
-            '--disable-blink-features=AutomationControlled']
+    return [
+        '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-setuid-sandbox', '--single-process',
+    ]
+
+def get_last_week_range():
+    """Retorna (start_ts, end_ts, label) para lunes-domingo de la semana pasada"""
+    today = datetime.now().date()
+    last_monday = today - timedelta(days=today.weekday() + 7)
+    last_sunday = last_monday + timedelta(days=6)
+    start_ts = int(datetime(last_monday.year, last_monday.month, last_monday.day, 0, 0, 0).timestamp())
+    end_ts   = int(datetime(last_sunday.year,  last_sunday.month,  last_sunday.day,  23, 59, 59).timestamp())
+    label = f"{last_monday.strftime('%d/%m')} - {last_sunday.strftime('%d/%m/%Y')}"
+    return start_ts, end_ts, label
 
 async def scrape_profile(page, username):
-    """Extraer datos del perfil vía la API interna de Instagram"""
+    """
+    Llama a la API interna de Instagram y devuelve todos los campos necesarios.
+    Filtra reels de la semana pasada (lunes a domingo).
+    """
     try:
-        api_url = f'https://www.instagram.com/api/v1/users/web_profile_info/?username={username}'
-        resp = await page.request.get(
-            api_url,
-            headers={
-                'X-IG-App-ID': '936619743392459',
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json',
-            }
-        )
-        if resp.ok:
-            data = await resp.json()
-            user = data.get('data', {}).get('user', {})
-            if user:
-                return {
-                    'success': True,
-                    'seguidores': user.get('edge_followed_by', {}).get('count', 0),
-                    'following': user.get('edge_follow', {}).get('count', 0),
-                    'posts': user.get('edge_owner_to_timeline_media', {}).get('count', 0),
-                    'bio': user.get('biography', ''),
-                }
-    except Exception as e:
-        logger.warning(f"API scrape failed for {username}: {e}")
-    return {'success': False}
+        url = f'https://www.instagram.com/api/v1/users/web_profile_info/?username={username}'
+        resp = await page.request.get(url, headers={
+            'X-IG-App-ID': '936619743392459',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+        })
 
-async def fetch_account_data(username, cookies_file):
-    """Obtener datos de una cuenta (abre su propio browser)"""
+        if not resp.ok:
+            logger.warning(f"{username}: API status {resp.status}")
+            return {'success': False, 'error': f'HTTP {resp.status}'}
+
+        body = await resp.json()
+        user = body.get('data', {}).get('user', {})
+        if not user:
+            return {'success': False, 'error': 'Usuario no encontrado o privado'}
+
+        followers = user.get('edge_followed_by', {}).get('count', 0)
+        following = user.get('edge_follow', {}).get('count', 0)
+        total_posts = user.get('edge_owner_to_timeline_media', {}).get('count', 0)
+        bio = user.get('biography', '')
+
+        # --- Reels de la semana pasada ---
+        start_ts, end_ts, week_label = get_last_week_range()
+        edges = user.get('edge_owner_to_timeline_media', {}).get('edges', [])
+
+        reels = []
+        for edge in edges:
+            node = edge.get('node', {})
+            ts = node.get('taken_at_timestamp', 0)
+            if start_ts <= ts <= end_ts and node.get('is_video', False):
+                reels.append({
+                    'likes':    node.get('edge_liked_by', {}).get('count', 0),
+                    'comments': node.get('edge_media_to_comment', {}).get('count', 0),
+                    'views':    node.get('video_view_count') or 0,
+                })
+
+        posts_week        = len(reels)
+        total_likes_week  = sum(r['likes']    for r in reels)
+        total_comments_week = sum(r['comments'] for r in reels)
+        total_views_week  = sum(r['views']    for r in reels)
+        avg_likes         = round(total_likes_week    / posts_week, 1) if posts_week else 0
+        avg_comments      = round(total_comments_week / posts_week, 1) if posts_week else 0
+        avg_views         = round(total_views_week    / posts_week, 1) if posts_week else 0
+
+        # Engagement = (likes + comentarios) de la semana / seguidores * 100
+        engagement = round((total_likes_week + total_comments_week) / followers * 100, 2) \
+                     if followers > 0 and posts_week > 0 else 0
+
+        logger.info(f"{username}: {followers} seg | {posts_week} reels semana {week_label}")
+        return {
+            'success': True,
+            'seguidores':           followers,
+            'following':            following,
+            'posts':                total_posts,
+            'bio':                  bio,
+            'posts_week':           posts_week,
+            'total_likes_week':     total_likes_week,
+            'total_comments_week':  total_comments_week,
+            'total_views_week':     total_views_week,
+            'avg_likes':            avg_likes,
+            'avg_comments':         avg_comments,
+            'avg_views':            avg_views,
+            'engagementRate':       engagement,
+            'week_label':           week_label,
+        }
+
+    except Exception as e:
+        logger.warning(f"scrape_profile error {username}: {e}")
+        return {'success': False, 'error': str(e)}
+
+def apply_result_to_account(account, r):
+    """Copia todos los campos del resultado al diccionario de la cuenta"""
+    account['seguidores']           = r['seguidores']
+    account['following']            = r['following']
+    account['posts']                = r['posts']
+    account['bio']                  = r.get('bio', account.get('bio', ''))
+    account['posts_week']           = r['posts_week']
+    account['total_likes_week']     = r['total_likes_week']
+    account['total_comments_week']  = r['total_comments_week']
+    account['total_views_week']     = r['total_views_week']
+    account['avg_likes']            = r['avg_likes']
+    account['avg_comments']         = r['avg_comments']
+    account['avg_views']            = r['avg_views']
+    account['engagementRate']       = r['engagementRate']
+    account['lastUpdate']           = datetime.now().strftime('%Y-%m-%d')
+    account['status']               = 'completed'
+
+async def _open_context(p):
+    browser = await p.chromium.launch(headless=True, args=get_browser_args())
+    context = await browser.new_context(
+        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        extra_http_headers={'Accept-Language': 'es-ES,es;q=0.9'},
+    )
+    if os.path.exists(COOKIES_FILE):
+        with open(COOKIES_FILE, 'r') as f:
+            raw = json.load(f)
+        await context.add_cookies(normalize_cookies(raw))
+    return browser, context
+
+async def fetch_account_data(username):
+    """Abre un browser propio y raspa una cuenta"""
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=get_browser_args())
-            context = await browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            )
-            if os.path.exists(cookies_file):
-                with open(cookies_file, 'r') as f:
-                    raw = json.load(f)
-                await context.add_cookies(normalize_cookies(raw))
-
+            browser, context = await _open_context(p)
             page = await context.new_page()
             result = await scrape_profile(page, username)
             await browser.close()
-
-            if result['success']:
-                return {
-                    'success': True,
-                    'username': username,
-                    'followers': result['seguidores'],
-                    'following': result['following'],
-                    'posts': result['posts'],
-                    'bio': result['bio'],
-                }
-            return {'success': False, 'error': 'No se pudo obtener datos del perfil'}
+            return result
     except Exception as e:
-        logger.error(f"Fetch error: {e}")
+        logger.error(f"fetch_account_data error {username}: {e}")
         return {'success': False, 'error': str(e)}
 
-async def fetch_all_batch(usernames, cookies_file):
-    """Obtener datos de múltiples cuentas con un único browser"""
+async def fetch_all_batch(usernames):
+    """Raspa todas las cuentas con un único browser"""
     results = {}
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=get_browser_args())
-            context = await browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            )
-            if os.path.exists(cookies_file):
-                with open(cookies_file, 'r') as f:
-                    raw = json.load(f)
-                await context.add_cookies(normalize_cookies(raw))
-
+            browser, context = await _open_context(p)
             page = await context.new_page()
             for username in usernames:
-                logger.info(f"Scraping {username}...")
-                result = await scrape_profile(page, username)
-                results[username] = result
-                await page.wait_for_timeout(800)
-
+                results[username] = await scrape_profile(page, username)
+                await page.wait_for_timeout(1200)   # pausa entre cuentas
             await browser.close()
     except Exception as e:
-        logger.error(f"Batch fetch error: {e}")
+        logger.error(f"fetch_all_batch error: {e}")
         for u in usernames:
             if u not in results:
                 results[u] = {'success': False, 'error': str(e)}
     return results
 
-async def login_instagram_browser(username, password):
-    """Login a Instagram usando navegador con Playwright"""
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=get_browser_args())
-            context = await browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            )
-            page = await context.new_page()
-            await page.goto('https://www.instagram.com/accounts/login/')
-            await page.wait_for_timeout(2000)
-            await page.fill('input[name="username"]', username)
-            await page.wait_for_timeout(500)
-            await page.fill('input[name="password"]', password)
-            await page.wait_for_timeout(500)
-            await page.click('button[type="button"]')
-            await page.wait_for_timeout(3000)
-            cookies = await context.cookies()
-            with open(COOKIES_FILE, 'w') as f:
-                json.dump(cookies, f, indent=2)
-            await browser.close()
-            logger.info("Login successful, cookies saved")
-            return {"success": True, "message": "Login successful"}
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        return {"success": False, "error": str(e)}
-
 # ═════════════════════════════════════════════════════════════
-# RUTAS PRINCIPALES
+# RUTAS ESTÁTICAS
 # ═════════════════════════════════════════════════════════════
 
 @app.route('/')
 def index():
-    """Servir página principal"""
     try:
         return send_from_directory('.', 'index.html')
     except:
@@ -215,7 +231,6 @@ def index():
 
 @app.route('/instagram')
 def instagram_page():
-    """Servir página de Instagram"""
     try:
         return send_from_directory('.', 'indexInstagram.html')
     except:
@@ -223,334 +238,297 @@ def instagram_page():
 
 @app.route('/health')
 def health():
-    """Health check para Render"""
     return jsonify({"status": "ok"}), 200
 
 # ═════════════════════════════════════════════════════════════
-# API ENDPOINTS - CUENTAS
+# API - CUENTAS
 # ═════════════════════════════════════════════════════════════
 
 @app.route('/api/accounts', methods=['GET'])
 def get_accounts():
-    """Obtener todas las cuentas"""
     try:
         data = get_data()
         accounts = data.get('accounts', [])
-        
-        # Asegurar campos completos
-        for account in accounts:
-            if 'seguidores' not in account:
-                account['seguidores'] = 0
-            if 'posts_week' not in account:
-                account['posts_week'] = 0
-            if 'total_views_week' not in account:
-                account['total_views_week'] = 0
-            if 'engagementRate' not in account:
-                account['engagementRate'] = 0.0
-            if 'lastUpdate' not in account:
-                account['lastUpdate'] = 'N/A'
-            if 'status' not in account:
-                account['status'] = 'Pending'
-        
-        return jsonify({
-            "success": True,
-            "accounts": accounts,
-            "total": len(accounts)
-        })
+        for a in accounts:
+            a.setdefault('seguidores', 0)
+            a.setdefault('posts_week', 0)
+            a.setdefault('total_views_week', 0)
+            a.setdefault('engagementRate', 0.0)
+            a.setdefault('lastUpdate', 'N/A')
+            a.setdefault('status', 'Pending')
+        return jsonify({"success": True, "accounts": accounts, "total": len(accounts)})
     except Exception as e:
-        logger.error(f"Error getting accounts: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/import-csv', methods=['POST'])
 def import_csv():
-    """Importar cuentas desde CSV"""
     try:
         req_data = request.get_json()
         csv_data = req_data.get('csvData', '')
-        
         if not csv_data:
             return jsonify({"success": False, "error": "No hay datos CSV"}), 400
-        
+
         data = get_data()
         lineas = csv_data.strip().split('\n')
-        
-        # Saltar header si existe
-        if len(lineas) > 0 and ('Usuario' in lineas[0] or 'usuario' in lineas[0]):
+        if lineas and ('usuario' in lineas[0].lower()):
             lineas = lineas[1:]
-        
+
         importados = 0
         for linea in lineas:
-            if linea.strip():
-                partes = [p.strip() for p in linea.split(',')]
-                
-                if len(partes) >= 1:
-                    usuario = partes[0].strip('"\'')
-                    encargada = partes[1] if len(partes) > 1 else "N/A"
-                    url = partes[2] if len(partes) > 2 else ""
-                    
-                    account = {
-                        "usuario": usuario,
-                        "encargada": encargada,
-                        "url": url,
-                        "seguidores": 0,
-                        "posts_week": 0,
-                        "total_views_week": 0,
-                        "engagementRate": 0.0,
-                        "lastUpdate": datetime.now().strftime('%Y-%m-%d %H:%M'),
-                        "status": "Pending"
-                    }
-                    
-                    existe = False
-                    for acc in data['accounts']:
-                        if acc.get('usuario') == usuario:
-                            acc.update(account)
-                            existe = True
-                            break
-                    
-                    if not existe:
-                        data['accounts'].append(account)
-                    
-                    importados += 1
-        
-        update_data(data)
+            if not linea.strip():
+                continue
+            partes = [p.strip() for p in linea.split(',')]
+            usuario   = partes[0].strip('"\'') if len(partes) > 0 else ''
+            encargada = partes[1].strip('"\'') if len(partes) > 1 else 'N/A'
+            url       = partes[2].strip('"\'') if len(partes) > 2 else ''
+            if not usuario:
+                continue
+
+            new_acc = {
+                "usuario": usuario, "encargada": encargada, "url": url,
+                "seguidores": 0, "following": 0, "posts": 0, "bio": "",
+                "posts_week": 0, "avg_likes": 0, "avg_comments": 0,
+                "total_likes_week": 0, "total_comments_week": 0,
+                "total_views_week": 0, "avg_views": 0, "engagementRate": 0.0,
+                "lastUpdate": datetime.now().strftime('%Y-%m-%d'), "status": "Pending"
+            }
+            existe = False
+            for acc in data['accounts']:
+                if acc.get('usuario') == usuario:
+                    # Solo actualiza encargada y url, no borra datos existentes
+                    acc['encargada'] = encargada
+                    acc['url'] = url
+                    existe = True
+                    break
+            if not existe:
+                data['accounts'].append(new_acc)
+            importados += 1
+
+        save_data(data)
         return jsonify({
             "success": True,
-            "message": f"✅ Se importaron {importados} cuenta(s) correctamente",
+            "message": f"✅ {importados} cuenta(s) importadas",
             "importados": importados,
             "accounts": data['accounts']
         })
     except Exception as e:
-        logger.error(f"Error importing CSV: {e}")
+        logger.error(f"import_csv error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/login-cookie', methods=['POST'])
 def login_cookie():
-    """Guardar cookies de Instagram desde archivo JSON"""
     try:
         req_data = request.get_json()
         cookies = req_data.get('cookies', [])
-
         if not cookies:
             return jsonify({"success": False, "error": "No se proporcionaron cookies"}), 400
-
-        # Normalizar antes de guardar para evitar errores de sameSite
         normalized = normalize_cookies(cookies)
         with open(COOKIES_FILE, 'w') as f:
             json.dump(normalized, f, indent=2)
-
-        logger.info(f"Cookies saved ({len(normalized)} cookies)")
-        return jsonify({"success": True, "message": "Cookies guardadas correctamente"})
+        logger.info(f"Cookies guardadas: {len(normalized)}")
+        return jsonify({"success": True, "message": f"✅ {len(normalized)} cookies guardadas correctamente"})
     except Exception as e:
-        logger.error(f"Error saving cookies: {e}")
-        return jsonify({"success": False, "error": str(e)}), 400
-
-@app.route('/api/login-browser', methods=['POST'])
-def login_browser():
-    """Login a Instagram con navegador (Playwright)"""
-    try:
-        req_data = request.get_json()
-        username = req_data.get('username', '')
-        password = req_data.get('password', '')
-        
-        if not username or not password:
-            return jsonify({"success": False, "error": "Usuario o contraseña faltante"}), 400
-        
-        # Ejecutar asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(login_instagram_browser(username, password))
-        loop.close()
-        
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"Error in login: {e}")
+        logger.error(f"login_cookie error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/fetch-followers', methods=['POST'])
 def fetch_followers():
-    """Obtener datos de seguidores con Playwright"""
+    """Actualizar una sola cuenta"""
     try:
         req_data = request.get_json()
         usuario = req_data.get('usuario', '')
-        
         if not usuario:
             return jsonify({"success": False, "error": "Usuario no especificado"}), 400
-        
-        # Ejecutar asyncio
+
+        if not os.path.exists(COOKIES_FILE):
+            return jsonify({"success": False, "error": "No hay cookies. Sube el archivo primero."}), 400
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(fetch_account_data(usuario, COOKIES_FILE))
+        r = loop.run_until_complete(fetch_account_data(usuario))
         loop.close()
-        
-        if result.get('success'):
-            return jsonify({
-                "success": True,
-                "usuario": usuario,
-                "data": {
-                    "seguidores": result.get('followers', 0),
-                    "posts_week": result.get('posts', 0)
-                }
-            })
-        else:
-            return jsonify(result), 400
-            
+
+        if not r.get('success'):
+            return jsonify({"success": False, "error": r.get('error', 'Error desconocido')}), 400
+
+        data = get_data()
+        for account in data['accounts']:
+            if account.get('usuario') == usuario:
+                apply_result_to_account(account, r)
+                break
+
+        # Añadir al historial
+        _, _, week_label = get_last_week_range()
+        data['history'].append({
+            "usuario":    usuario,
+            "seguidores": r['seguidores'],
+            "following":  r['following'],
+            "posts":      r['posts'],
+            "posts_week": r['posts_week'],
+            "avg_likes":  r['avg_likes'],
+            "avg_comments": r['avg_comments'],
+            "engagement": r['engagementRate'],
+            "semana":     week_label,
+            "fecha":      datetime.now().strftime('%Y-%m-%d'),
+        })
+        save_data(data)
+
+        return jsonify({
+            "success": True,
+            "message": f"✅ @{usuario}: {r['seguidores']:,} seg | {r['posts_week']} reels semana",
+            "accounts": data['accounts'],
+        })
     except Exception as e:
-        logger.error(f"Error fetching followers: {e}")
+        logger.error(f"fetch_followers error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/fetch-all-batch', methods=['POST'])
 def fetch_all_batch_endpoint():
-    """Obtener datos de todas las cuentas usando un único browser"""
+    """Actualizar todas las cuentas con un único browser"""
     try:
         if not os.path.exists(COOKIES_FILE):
-            return jsonify({"success": False, "error": "No hay cookies guardadas. Sube el archivo de cookies primero."}), 400
+            return jsonify({"success": False, "error": "No hay cookies. Sube el archivo primero."}), 400
 
         data = get_data()
         accounts = data.get('accounts', [])
         if not accounts:
-            return jsonify({"success": False, "error": "No hay cuentas para actualizar"}), 400
+            return jsonify({"success": False, "error": "No hay cuentas"}), 400
 
         usernames = [a['usuario'] for a in accounts]
-
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        results = loop.run_until_complete(fetch_all_batch(usernames, COOKIES_FILE))
+        results = loop.run_until_complete(fetch_all_batch(usernames))
         loop.close()
 
-        updated = 0
+        _, _, week_label = get_last_week_range()
+        updated, failed = 0, 0
+
         for account in data['accounts']:
             r = results.get(account['usuario'], {})
             if r.get('success'):
-                account['seguidores'] = r.get('seguidores', account.get('seguidores', 0))
-                account['following'] = r.get('following', account.get('following', 0))
-                account['posts'] = r.get('posts', account.get('posts', 0))
-                if r.get('bio'):
-                    account['bio'] = r['bio']
-                account['lastUpdate'] = datetime.now().strftime('%Y-%m-%d')
-                account['status'] = 'completed'
+                apply_result_to_account(account, r)
+                data['history'].append({
+                    "usuario":    account['usuario'],
+                    "seguidores": r['seguidores'],
+                    "following":  r['following'],
+                    "posts":      r['posts'],
+                    "posts_week": r['posts_week'],
+                    "avg_likes":  r['avg_likes'],
+                    "avg_comments": r['avg_comments'],
+                    "engagement": r['engagementRate'],
+                    "semana":     week_label,
+                    "fecha":      datetime.now().strftime('%Y-%m-%d'),
+                })
                 updated += 1
+            else:
+                account['status'] = 'failed'
+                failed += 1
+                logger.warning(f"Failed: {account['usuario']} — {r.get('error')}")
 
-        update_data(data)
-        logger.info(f"Batch update: {updated}/{len(accounts)} accounts updated")
+        save_data(data)
+        logger.info(f"Batch done: {updated} ok / {failed} failed")
+        msg = f"✅ {updated}/{len(accounts)} cuentas actualizadas"
+        if failed:
+            msg += f" ({failed} fallidas)"
         return jsonify({
             "success": True,
-            "message": f"✅ {updated} de {len(accounts)} cuentas actualizadas",
+            "message": msg,
             "updated": updated,
-            "total": len(accounts),
-            "accounts": data['accounts']
+            "failed":  failed,
+            "week":    week_label,
+            "accounts": data['accounts'],
         })
     except Exception as e:
-        logger.error(f"Error in batch fetch: {e}")
+        logger.error(f"fetch_all_batch_endpoint error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/update-followers', methods=['POST'])
 def update_followers():
-    """Actualizar datos de seguidores"""
+    """Actualización manual de seguidores"""
     try:
         req_data = request.get_json()
-        usuario = req_data.get('usuario', '')
-        seguidores = req_data.get('seguidores', 0)
+        usuario       = req_data.get('usuario', '')
+        seguidores    = req_data.get('seguidores', 0)
         engagement_rate = req_data.get('engagementRate', 0)
-        
         if not usuario:
             return jsonify({"success": False, "error": "Usuario no especificado"}), 400
-        
+
         data = get_data()
-        
-        actualizado = False
         for account in data['accounts']:
             if account.get('usuario') == usuario:
-                account['seguidores'] = int(seguidores)
+                account['seguidores']    = int(seguidores)
                 account['engagementRate'] = float(engagement_rate)
-                account['lastUpdate'] = datetime.now().strftime('%Y-%m-%d %H:%M')
-                actualizado = True
-                logger.info(f"Updated account {usuario}")
+                account['lastUpdate']    = datetime.now().strftime('%Y-%m-%d')
+                account['status']        = 'completed'
                 break
-        
-        if not actualizado:
+        else:
             return jsonify({"success": False, "error": "Cuenta no encontrada"}), 404
-        
-        update_data(data)
-        
+
+        save_data(data)
         return jsonify({
             "success": True,
-            "message": f"✅ @{usuario} actualizado correctamente",
-            "accounts": data['accounts']
+            "message": f"✅ @{usuario} actualizado manualmente",
+            "accounts": data['accounts'],
         })
     except Exception as e:
-        logger.error(f"Error updating followers: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/account/<usuario>', methods=['DELETE'])
 def delete_account(usuario):
-    """Eliminar una cuenta"""
     try:
         data = get_data()
-        original_length = len(data['accounts'])
-        data['accounts'] = [acc for acc in data['accounts'] if acc.get('usuario') != usuario]
-        
-        if len(data['accounts']) == original_length:
+        before = len(data['accounts'])
+        data['accounts'] = [a for a in data['accounts'] if a.get('usuario') != usuario]
+        if len(data['accounts']) == before:
             return jsonify({"success": False, "error": "Cuenta no encontrada"}), 404
-        
-        logger.info(f"Deleted account: {usuario}")
-        update_data(data)
-        
-        return jsonify({
-            "success": True,
-            "message": f"✅ Cuenta @{usuario} eliminada",
-            "accounts": data['accounts']
-        })
+        save_data(data)
+        return jsonify({"success": True, "message": f"✅ @{usuario} eliminada", "accounts": data['accounts']})
     except Exception as e:
-        logger.error(f"Error deleting account: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/history', methods=['GET'])
 def get_history():
-    """Obtener historial"""
     try:
         data = get_data()
-        return jsonify({
-            "success": True,
-            "history": data.get('history', [])
-        })
+        return jsonify({"success": True, "history": data.get('history', [])})
     except Exception as e:
-        logger.error(f"Error getting history: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/export-csv', methods=['GET'])
 def export_csv():
-    """Exportar cuentas como CSV"""
+    """Descarga el CSV directamente (no JSON)"""
     try:
         data = get_data()
-        csv_content = "Usuario,Encargada,URL,Seguidores,Engagement,Última Actualización\n"
-        
-        for account in data['accounts']:
-            csv_content += f"{account.get('usuario')},{account.get('encargada')},{account.get('url')},{account.get('seguidores', 0)},{account.get('engagementRate', 0)},{account.get('lastUpdate', 'N/A')}\n"
-        
-        return jsonify({
-            "success": True,
-            "csv": csv_content,
-            "filename": "cuentas_instagram.csv"
-        })
+        _, _, week_label = get_last_week_range()
+        lines = [
+            "Usuario,Encargada,URL,Seguidores,Following,Posts totales,"
+            f"Reels semana ({week_label}),Vistas totales,Avg Likes,Avg Comments,"
+            "Engagement (%),Última actualización"
+        ]
+        for a in data['accounts']:
+            lines.append(
+                f"{a.get('usuario','')},{a.get('encargada','')},{a.get('url','')},"
+                f"{a.get('seguidores',0)},{a.get('following',0)},{a.get('posts',0)},"
+                f"{a.get('posts_week',0)},{a.get('total_views_week',0)},"
+                f"{a.get('avg_likes',0)},{a.get('avg_comments',0)},"
+                f"{a.get('engagementRate',0)},{a.get('lastUpdate','N/A')}"
+            )
+        csv_content = '\n'.join(lines)
+        return Response(
+            csv_content,
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition': 'attachment; filename=cuentas_instagram.csv'}
+        )
     except Exception as e:
-        logger.error(f"Error exporting CSV: {e}")
+        logger.error(f"export_csv error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/clear-all', methods=['DELETE', 'POST'])
 def clear_all():
-    """Limpiar todas las cuentas"""
     try:
-        data = {"accounts": [], "history": []}
-        update_data(data)
-        logger.info("All accounts cleared")
-        
-        return jsonify({
-            "success": True,
-            "message": "✅ Todas las cuentas han sido eliminadas",
-            "accounts": []
-        })
+        save_data({"accounts": [], "history": []})
+        return jsonify({"success": True, "message": "✅ Datos eliminados", "accounts": []})
     except Exception as e:
-        logger.error(f"Error clearing accounts: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
 
 # ═════════════════════════════════════════════════════════════
@@ -567,11 +545,10 @@ def server_error(error):
     return jsonify({"error": "Server error"}), 500
 
 # ═════════════════════════════════════════════════════════════
-# MAIN
+# STARTUP
 # ═════════════════════════════════════════════════════════════
 
 def repair_cookies_file():
-    """Normalizar cookies ya guardadas (se ejecuta al importar el módulo)"""
     if os.path.exists(COOKIES_FILE):
         try:
             with open(COOKIES_FILE, 'r') as f:
@@ -579,14 +556,13 @@ def repair_cookies_file():
             fixed = normalize_cookies(raw)
             with open(COOKIES_FILE, 'w') as f:
                 json.dump(fixed, f, indent=2)
-            logger.info(f"Cookies file repaired on startup ({len(fixed)} cookies)")
+            logger.info(f"Cookies reparadas al arrancar: {len(fixed)}")
         except Exception as e:
-            logger.warning(f"Could not repair cookies file: {e}")
+            logger.warning(f"No se pudo reparar cookies: {e}")
 
-# Ejecutar al importar: cubre gunicorn y python directo
 repair_cookies_file()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    logger.info(f"🚀 Starting server on port {port}")
+    logger.info(f"Servidor en puerto {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
